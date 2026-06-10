@@ -1,0 +1,3 @@
+{
+  "note": "This file is sanitized. Copy fixtures/demo-database.json into DATA_DIR/database.json for a disposable demo, or keep your real database.json outside Git."
+}

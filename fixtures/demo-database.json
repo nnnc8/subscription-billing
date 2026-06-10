@@ -1,0 +1,130 @@
+{
+  "currentMonth": "2026/06",
+  "baseMonth": "2026/01",
+  "bankInfo": "Demo Bank (000) account 0000000000",
+  "reminderStyle": "formal",
+  "members": [
+    {
+      "id": "m_alpha",
+      "name": "Member Alpha",
+      "priorBalance": 0,
+      "customFee": null
+    },
+    {
+      "id": "m_beta",
+      "name": "Member Beta",
+      "priorBalance": 120,
+      "customFee": null
+    },
+    {
+      "id": "m_gamma",
+      "name": "Member Gamma",
+      "priorBalance": -40,
+      "customFee": 300
+    }
+  ],
+  "platforms": [
+    {
+      "id": "p_video",
+      "name": "Shared Video",
+      "price": 100,
+      "billingMode": "fixed",
+      "totalCost": 0
+    },
+    {
+      "id": "p_music",
+      "name": "Shared Music",
+      "price": 80,
+      "billingMode": "fixed",
+      "totalCost": 0
+    },
+    {
+      "id": "p_team",
+      "name": "Team Suite",
+      "price": 0,
+      "billingMode": "split",
+      "totalCost": 300
+    }
+  ],
+  "subscriptions": [
+    {
+      "id": "s_alpha_video",
+      "memberId": "m_alpha",
+      "memberName": "Member Alpha",
+      "platformId": "p_video",
+      "platformName": "Shared Video",
+      "startMonth": "2026/01",
+      "exitMonth": ""
+    },
+    {
+      "id": "s_beta_video_1",
+      "memberId": "m_beta",
+      "memberName": "Member Beta",
+      "platformId": "p_video",
+      "platformName": "Shared Video",
+      "startMonth": "2026/01",
+      "exitMonth": "",
+      "allowDuplicate": true,
+      "seatLabel": "Seat 1"
+    },
+    {
+      "id": "s_beta_video_2",
+      "memberId": "m_beta",
+      "memberName": "Member Beta",
+      "platformId": "p_video",
+      "platformName": "Shared Video",
+      "startMonth": "2026/06",
+      "exitMonth": "",
+      "allowDuplicate": true,
+      "seatLabel": "Seat 2"
+    },
+    {
+      "id": "s_beta_music",
+      "memberId": "m_beta",
+      "memberName": "Member Beta",
+      "platformId": "p_music",
+      "platformName": "Shared Music",
+      "startMonth": "2026/02",
+      "exitMonth": ""
+    },
+    {
+      "id": "s_gamma_team",
+      "memberId": "m_gamma",
+      "memberName": "Member Gamma",
+      "platformId": "p_team",
+      "platformName": "Team Suite",
+      "startMonth": "2026/03",
+      "exitMonth": ""
+    }
+  ],
+  "payments": [
+    {
+      "id": "pay_beta_demo",
+      "memberId": "m_beta",
+      "memberName": "Member Beta",
+      "date": "2026-06-04",
+      "amount": 250,
+      "method": "transfer",
+      "cycle": "202606",
+      "note": "demo payment",
+      "createdAt": "2026-06-04T02:00:00.000Z"
+    }
+  ],
+  "tempCharges": [
+    {
+      "id": "chg_alpha_demo",
+      "memberId": "m_alpha",
+      "memberName": "Member Alpha",
+      "date": "2026-06-05",
+      "amount": 50,
+      "desc": "demo adjustment",
+      "createdAt": "2026-06-05T02:00:00.000Z"
+    }
+  ],
+  "history": [],
+  "ledger": {
+    "version": 1,
+    "entries": [],
+    "lastHash": null
+  }
+}
