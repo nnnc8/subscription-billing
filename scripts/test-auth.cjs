@@ -121,6 +121,7 @@ async function withServer(fakeGoogle, fn) {
             GOOGLE_CLIENT_ID: 'fake-client-id',
             GOOGLE_CLIENT_SECRET: 'fake-client-secret',
             GOOGLE_ALLOWED_EMAILS: allowedEmail,
+            GOOGLE_REDIRECT_URI: `http://127.0.0.1:${port}/api/auth/callback`,
             GOOGLE_OAUTH_AUTH_URL: `${fakeGoogle.baseUrl}/oauth2/v2/auth`,
             GOOGLE_OAUTH_TOKEN_URL: `${fakeGoogle.baseUrl}/token`,
             GOOGLE_OAUTH_USERINFO_URL: `${fakeGoogle.baseUrl}/userinfo`,
@@ -195,6 +196,8 @@ async function main() {
             assert.strictEqual(authLocation.searchParams.get('response_type'), 'code');
             assert.strictEqual(authLocation.searchParams.get('scope'), 'openid email profile');
             assert.strictEqual(authLocation.searchParams.get('redirect_uri'), `${baseUrl}/api/auth/callback`);
+            assert.strictEqual(authLocation.searchParams.get('login_hint'), allowedEmail);
+            assert.strictEqual(authLocation.searchParams.get('prompt'), null);
             assert(authLocation.searchParams.get('state'));
             const stateCookie = cookieValue(login.headers.getSetCookie(), OAUTH_STATE_COOKIE_NAME);
             assert.strictEqual(stateCookie, authLocation.searchParams.get('state'));
