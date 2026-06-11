@@ -15,7 +15,6 @@
     "start": "node server.cjs",
     "serve": "vite build && node server.cjs",
     "doctor": "node scripts/doctor.cjs",
-    "hash-password": "node scripts/hash-password.cjs",
     "verify": "node scripts/test-auth.cjs && node scripts/test-privacy.cjs && node verify_accounting.cjs && python3 verify_rollover.py && node scripts/test-portability.cjs",
     "launchd:install": "node scripts/install-launchagent.cjs",
     "launchd:uninstall": "node scripts/uninstall-launchagent.cjs",

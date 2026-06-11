@@ -1,6 +1,6 @@
 # Subscription Billing Console
 
-Single-operator subscription billing console with audit checks, recovery backups, monthly rollover, and server-side password login.
+Single-operator subscription billing console with audit checks, recovery backups, monthly rollover, and Google account login.
 
 The repository stores code and sanitized demo data only. Real billing data belongs in an ignored local `database.json` or in the Railway persistent volume at `/data/database.json`.
 
@@ -21,18 +21,20 @@ pnpm run build
 
 Create a local `.env` file. This file is ignored by Git.
 
-```bash
-pnpm run hash-password
-```
-
-Put the generated hash into `.env`:
-
 ```env
 PORT=3000
 HOST=127.0.0.1
 DATA_DIR=.
-APP_PASSWORD_HASH=scrypt$...
 APP_SESSION_SECRET=replace-with-at-least-32-random-characters
+GOOGLE_CLIENT_ID=your-google-oauth-client-id
+GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
+GOOGLE_ALLOWED_EMAILS=your-account@gmail.com
+```
+
+In Google Cloud Console, create an OAuth client with application type `Web application` and add this authorized redirect URI:
+
+```text
+http://localhost:3000/api/auth/callback
 ```
 
 Start the app:
@@ -81,12 +83,13 @@ PRIVACY_GREP_TERMS_FILE=.privacy-terms pnpm run verify
 
 ## Auth Model
 
-- `POST /api/auth/login`
+- `GET /api/auth/login`
+- `GET /api/auth/callback`
 - `POST /api/auth/logout`
 - `GET /api/auth/session`
 - `GET /api/health`
 
-All other `/api/*` endpoints require a signed HttpOnly cookie. Sessions use `SameSite=Lax`, expire after 7 days, and set `Secure` automatically in production. Passwords are verified with scrypt hashes from `APP_PASSWORD_HASH`; plaintext passwords are never committed.
+All other `/api/*` endpoints require a signed HttpOnly cookie. Sessions use `SameSite=Lax`, expire after 7 days, and set `Secure` automatically in production. Google OAuth tokens are only used during callback handling and are not stored in `database.json`.
 
 ## Railway Deploy
 
@@ -96,9 +99,17 @@ Set Railway variables:
 DATA_DIR=/data
 HOST=0.0.0.0
 PORT=3000
-APP_PASSWORD_HASH=scrypt$...
 APP_SESSION_SECRET=replace-with-at-least-32-random-characters
+GOOGLE_CLIENT_ID=your-google-oauth-client-id
+GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
+GOOGLE_ALLOWED_EMAILS=your-account@gmail.com
 NODE_ENV=production
+```
+
+In the Google OAuth client, add the Railway callback URL:
+
+```text
+https://your-railway-domain.example/api/auth/callback
 ```
 
 Attach a persistent volume mounted at `/data`.

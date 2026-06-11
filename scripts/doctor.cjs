@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { loadLocalEnv } = require('../lib/env.cjs');
+const { isGoogleOAuthConfigured } = require('../lib/google-oauth.cjs');
 
 const {
     findAccountingWarnings,
@@ -111,17 +112,21 @@ function checkAccounting(db) {
 }
 
 function checkAuthEnv() {
-    const hasPasswordHash = Boolean(process.env.APP_PASSWORD_HASH);
+    const hasGoogleClientId = Boolean(process.env.GOOGLE_CLIENT_ID);
+    const hasGoogleClientSecret = Boolean(process.env.GOOGLE_CLIENT_SECRET);
+    const hasAllowedEmails = Boolean(process.env.GOOGLE_ALLOWED_EMAILS);
     const hasSessionSecret = Boolean(process.env.APP_SESSION_SECRET);
     const secretLongEnough = !process.env.APP_SESSION_SECRET || process.env.APP_SESSION_SECRET.length >= 32;
 
-    if (hasPasswordHash && hasSessionSecret && secretLongEnough) {
-        addCheck('pass', 'Auth env', 'APP_PASSWORD_HASH and APP_SESSION_SECRET are set');
+    if (isGoogleOAuthConfigured(process.env) && hasSessionSecret && secretLongEnough) {
+        addCheck('pass', 'Auth env', 'Google OAuth vars and APP_SESSION_SECRET are set');
         return;
     }
 
     const detailParts = [];
-    if (!hasPasswordHash) detailParts.push('APP_PASSWORD_HASH missing');
+    if (!hasGoogleClientId) detailParts.push('GOOGLE_CLIENT_ID missing');
+    if (!hasGoogleClientSecret) detailParts.push('GOOGLE_CLIENT_SECRET missing');
+    if (!hasAllowedEmails) detailParts.push('GOOGLE_ALLOWED_EMAILS missing');
     if (!hasSessionSecret) detailParts.push('APP_SESSION_SECRET missing');
     if (!secretLongEnough) detailParts.push('APP_SESSION_SECRET should be at least 32 characters');
 
@@ -134,7 +139,7 @@ function checkHostBinding() {
         return;
     }
     if (host === '0.0.0.0' || host === '::') {
-        addCheck(isCloudBinding() ? 'pass' : 'warn', 'Host binding', `${host}; public binding must have auth envs before use`);
+        addCheck(isCloudBinding() ? 'pass' : 'warn', 'Host binding', `${host}; public binding must have Google auth envs before use`);
         return;
     }
     addCheck('warn', 'Host binding', `${host}; verify this is intentional`);

@@ -4,12 +4,22 @@ const path = require('path');
 const crypto = require('crypto');
 const { loadLocalEnv } = require('./lib/env.cjs');
 const {
+    OAUTH_STATE_COOKIE_NAME,
+    OAUTH_STATE_MAX_AGE_SECONDS,
     SESSION_COOKIE_NAME,
     SESSION_MAX_AGE_SECONDS,
+    createOAuthStateValue,
     createSessionCookieValue,
-    verifyPassword,
     verifySessionCookieValue
 } = require('./lib/auth.cjs');
+const {
+    buildGoogleAuthUrl,
+    exchangeGoogleCode,
+    fetchGoogleUserinfo,
+    getGoogleOAuthConfig,
+    isAllowedGoogleUser,
+    isGoogleOAuthConfigured
+} = require('./lib/google-oauth.cjs');
 const {
     appendLedgerEvent,
     calculateCurrentMonthBalances,
@@ -30,6 +40,7 @@ const {
 loadLocalEnv({ cwd: __dirname });
 
 const app = express();
+app.set('trust proxy', true);
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
 const DATA_DIR = path.resolve(process.env.DATA_DIR || __dirname);
@@ -88,7 +99,7 @@ function applyCors(req, res, next) {
 }
 
 function isAuthConfigured() {
-    return Boolean(process.env.APP_PASSWORD_HASH && process.env.APP_SESSION_SECRET);
+    return Boolean(process.env.APP_SESSION_SECRET && isGoogleOAuthConfigured(process.env));
 }
 
 function isCloudBinding() {
@@ -110,25 +121,47 @@ function parseCookies(req) {
         }, {});
 }
 
-function buildSessionCookie(value, { maxAge = SESSION_MAX_AGE_SECONDS } = {}) {
+function buildCookie(name, value, { maxAge, httpOnly = true } = {}) {
     const pieces = [
-        `${SESSION_COOKIE_NAME}=${value}`,
+        `${name}=${value}`,
         'Path=/',
-        'HttpOnly',
         'SameSite=Lax',
         `Max-Age=${maxAge}`
     ];
+    if (httpOnly) pieces.push('HttpOnly');
     if (COOKIE_SECURE) pieces.push('Secure');
     return pieces.join('; ');
+}
+
+function buildSessionCookie(value, { maxAge = SESSION_MAX_AGE_SECONDS } = {}) {
+    return buildCookie(SESSION_COOKIE_NAME, value, { maxAge });
+}
+
+function buildOAuthStateCookie(value, { maxAge = OAUTH_STATE_MAX_AGE_SECONDS } = {}) {
+    return buildCookie(OAUTH_STATE_COOKIE_NAME, value, { maxAge });
 }
 
 function clearSessionCookie() {
     return buildSessionCookie('', { maxAge: 0 });
 }
 
+function clearOAuthStateCookie() {
+    return buildOAuthStateCookie('', { maxAge: 0 });
+}
+
 function verifyRequestSession(req) {
     const value = parseCookies(req)[SESSION_COOKIE_NAME];
     return verifySessionCookieValue(value, { secret: process.env.APP_SESSION_SECRET });
+}
+
+function externalOrigin(req) {
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    return `${proto}://${host}`;
+}
+
+function getGoogleRedirectUri(req, config) {
+    return config.redirectUri || `${externalOrigin(req)}/api/auth/callback`;
 }
 
 function requireAuth(req, res, next) {
@@ -152,7 +185,7 @@ function bootstrapDataFiles() {
 }
 
 if (isCloudBinding() && !isAuthConfigured()) {
-    console.error('APP_PASSWORD_HASH and APP_SESSION_SECRET are required when binding to a public host or running production.');
+    console.error('GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_ALLOWED_EMAILS, and APP_SESSION_SECRET are required when binding to a public host or running production.');
     process.exit(1);
 }
 
@@ -496,21 +529,67 @@ app.get('/api/auth/session', (req, res) => {
         return res.json({ authenticated: false, authConfigured: false });
     }
     const session = verifyRequestSession(req);
-    return res.json({ authenticated: session.ok });
+    return res.json({
+        authenticated: session.ok,
+        ...(session.ok && session.session.user ? { user: session.session.user } : {})
+    });
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.get('/api/auth/login', (req, res) => {
     if (!isAuthConfigured()) {
         return res.status(503).json({ error: 'Authentication is not configured' });
     }
-    const password = typeof req.body?.password === 'string' ? req.body.password : '';
-    if (!password || password.length > 1000 || !verifyPassword(password, process.env.APP_PASSWORD_HASH)) {
-        return res.status(401).json({ error: 'Invalid password' });
+
+    const config = getGoogleOAuthConfig();
+    const state = createOAuthStateValue();
+    const redirectUri = getGoogleRedirectUri(req, config);
+    const authUrl = buildGoogleAuthUrl({ config, redirectUri, state });
+    res.setHeader('Set-Cookie', buildOAuthStateCookie(state));
+    return res.redirect(authUrl);
+});
+
+app.get('/api/auth/callback', async (req, res) => {
+    if (!isAuthConfigured()) {
+        return res.status(503).json({ error: 'Authentication is not configured' });
     }
 
-    const cookieValue = createSessionCookieValue({ secret: process.env.APP_SESSION_SECRET });
-    res.setHeader('Set-Cookie', buildSessionCookie(cookieValue));
-    return res.json({ authenticated: true });
+    const { code, state } = req.query;
+    const cookies = parseCookies(req);
+    if (
+        typeof code !== 'string' ||
+        typeof state !== 'string' ||
+        !cookies[OAUTH_STATE_COOKIE_NAME] ||
+        cookies[OAUTH_STATE_COOKIE_NAME] !== state
+    ) {
+        res.setHeader('Set-Cookie', clearOAuthStateCookie());
+        return res.status(400).json({ error: 'Invalid OAuth state' });
+    }
+
+    const config = getGoogleOAuthConfig();
+    const redirectUri = getGoogleRedirectUri(req, config);
+    try {
+        const token = await exchangeGoogleCode({ config, code, redirectUri });
+        const profile = await fetchGoogleUserinfo({ config, accessToken: token.access_token });
+        if (!isAllowedGoogleUser(profile, config.allowedEmails)) {
+            res.setHeader('Set-Cookie', clearOAuthStateCookie());
+            return res.status(403).json({ error: 'Google account is not allowed' });
+        }
+
+        const user = {
+            email: profile.email.toLowerCase(),
+            name: profile.name || profile.email
+        };
+        const cookieValue = createSessionCookieValue({ secret: process.env.APP_SESSION_SECRET, user });
+        res.setHeader('Set-Cookie', [
+            buildSessionCookie(cookieValue),
+            clearOAuthStateCookie()
+        ]);
+        return res.redirect('/');
+    } catch (err) {
+        console.error('Google OAuth callback failed:', err.message || err);
+        res.setHeader('Set-Cookie', clearOAuthStateCookie());
+        return res.status(err.status || 500).json({ error: 'Google login failed' });
+    }
 });
 
 app.post('/api/auth/logout', (req, res) => {

@@ -35,9 +35,8 @@ function App() {
   const [error, setError] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
-  const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [authLoading, setAuthLoading] = useState(false);
+  const [authUser, setAuthUser] = useState(null);
   
   // Modals
   const [showPayModal, setShowPayModal] = useState(false);
@@ -98,6 +97,7 @@ function App() {
 
   const markUnauthenticated = useCallback(() => {
     setAuthenticated(false);
+    setAuthUser(null);
     setData(null);
     setError(null);
     setLoading(false);
@@ -253,6 +253,7 @@ function App() {
         const json = await res.json();
         if (cancelled) return;
         setAuthenticated(Boolean(json.authenticated));
+        setAuthUser(json.user || null);
       } catch {
         if (!cancelled) setAuthenticated(false);
       } finally {
@@ -271,29 +272,9 @@ function App() {
     return () => window.clearTimeout(loadTimer);
   }, [authChecked, authenticated, fetchData]);
 
-  const handleLogin = async (event) => {
-    event.preventDefault();
-    setAuthLoading(true);
+  const handleLogin = () => {
     setLoginError('');
-    try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: loginPassword })
-      });
-      if (!res.ok) {
-        const payload = await res.json().catch(() => ({}));
-        throw new Error(payload.error || '登入失敗');
-      }
-      setLoginPassword('');
-      setAuthenticated(true);
-      setLoading(true);
-    } catch (err) {
-      setLoginError(err.message || '登入失敗');
-    } finally {
-      setAuthLoading(false);
-    }
+    window.location.href = `${API_BASE}/auth/login`;
   };
 
   const handleLogout = async () => {
@@ -1141,25 +1122,15 @@ function App() {
   if (!authenticated) {
     return (
       <div className="auth-shell">
-        <form className="auth-panel" onSubmit={handleLogin}>
-          <span className="auth-kicker">Solo operator access</span>
+        <div className="auth-panel">
+          <span className="auth-kicker">Google account access</span>
           <h1>Subscription Billing</h1>
-          <p>輸入系統密碼後才會載入帳務資料。</p>
-          <label className="auth-label" htmlFor="app-password">系統密碼</label>
-          <input
-            id="app-password"
-            className="form-control auth-input"
-            type="password"
-            value={loginPassword}
-            onChange={(event) => setLoginPassword(event.target.value)}
-            autoComplete="current-password"
-            autoFocus
-          />
+          <p>使用允許名單內的 Google 帳號登入後才會載入帳務資料。</p>
           {loginError && <div className="auth-error">{loginError}</div>}
-          <button className="btn btn-primary auth-submit" type="submit" disabled={authLoading || !loginPassword}>
-            {authLoading ? '登入中...' : '登入'}
+          <button className="btn btn-primary auth-submit" type="button" onClick={handleLogin}>
+            使用 Google 登入
           </button>
-        </form>
+        </div>
       </div>
     );
   }
@@ -1316,6 +1287,7 @@ function App() {
         <div className="sidebar-footer">
           <p>local operator node</p>
           <p style={{ fontSize: '0.7rem', marginTop: '0.25rem' }}>{data.currentMonth} · solo operator mode</p>
+          {authUser?.email && <p style={{ fontSize: '0.68rem', marginTop: '0.25rem' }}>{authUser.email}</p>}
           <button className="sidebar-logout" type="button" onClick={handleLogout}>
             登出
           </button>

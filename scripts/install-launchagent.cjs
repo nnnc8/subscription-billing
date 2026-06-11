@@ -18,7 +18,7 @@ if (process.platform !== 'darwin') {
 const projectDir = path.resolve(__dirname, '..');
 const envPath = path.join(projectDir, '.env');
 if (!fs.existsSync(envPath)) {
-    console.error('Missing .env. Create it from .env.example and set APP_PASSWORD_HASH plus APP_SESSION_SECRET before installing launchd.');
+    console.error('Missing .env. Create it from .env.example and set Google OAuth vars plus APP_SESSION_SECRET before installing launchd.');
     process.exit(1);
 }
 
