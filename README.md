@@ -1,16 +1,68 @@
 # Subscription Billing Console
 
-Single-operator subscription billing console with audit checks, recovery backups, monthly rollover, and Google account login.
+Single-operator subscription billing console for turning spreadsheet-based reconciliation into an auditable internal operations tool.
 
-The repository stores code and sanitized demo data only. Real billing data belongs in an ignored local `database.json` or in the Railway persistent volume at `/data/database.json`.
+This project is a portfolio prototype, not a public SaaS product. I built it around a narrow personal workflow so I could practice the full cycle of requirements definition, data modeling, authentication, API design, accounting checks, and regression verification.
 
-## Requirements
+## What It Solves
+
+Small subscription-based operations often start in Excel: members, platforms, payments, temporary charges, monthly closing, and exceptions live in separate sheets or notes. That makes it hard to answer simple operational questions:
+
+- Which members still have unpaid balances?
+- Did someone enter the same payment twice?
+- Which subscriptions should roll into the next month?
+- Can historical records still be traced after members or platforms are archived?
+- Did a code change break login, data boundaries, or accounting rules?
+
+Subscription Billing Console converts those spreadsheet-like steps into a web console with protected API routes, demo data, accounting warnings, a monthly close workflow, and verification scripts.
+
+## Highlights
+
+- **Operations data model**: members, platforms, subscriptions, payments, temporary charges, monthly history, and ledger events.
+- **Accounting checks**: duplicate payment detection, temporary charge checks, close-readiness preview, archived member/platform handling, and rollover validation.
+- **Tamper-evident ledger summary**: important writes append hash-linked ledger events and expose a `GET /api/ledger` audit view.
+- **Google account login**: OAuth login with allowlisted emails, signed HttpOnly session cookies, and protected `/api/*` routes.
+- **Privacy boundary**: real `.env`, `database.json`, backups, and handoff notes are ignored by Git; tracked demo data is sanitized.
+- **Regression verification**: `pnpm run verify` checks authentication, API protection, Git privacy, accounting invariants, rollover behavior, and portability.
+
+## Tech Stack
+
+- React 19
+- Vite
+- Express 5
+- Google OAuth
+- Node.js 20+
+- GitHub Actions
+- pnpm
+
+## Demo Data And Privacy
+
+The repository stores code and sanitized demo data only.
+
+Tracked demo and example files:
+
+- `fixtures/demo-database.json`
+- `database.example.json`
+- `.env.example`
+
+Ignored live files:
+
+- `.env`
+- `database.json`
+- `backups/*.json`
+- `session_handoff.md`
+- `data/`
+
+When `database.json` is missing, the server bootstraps a disposable demo database from `fixtures/demo-database.json`. Real billing data should stay in an ignored local `database.json` or in a private deployment volume such as `/data/database.json`.
+
+## Local Setup
+
+Requirements:
 
 - Node.js 20 or newer
 - pnpm 11.1.2, or npm as a fallback
-- A private GitHub repository
 
-## Local Setup
+Install and build:
 
 ```bash
 git clone https://github.com/nnnc8/subscription-billing.git
@@ -19,7 +71,7 @@ pnpm install
 pnpm run build
 ```
 
-Create a local `.env` file. This file is ignored by Git.
+Create a local `.env` file from `.env.example`. This file is ignored by Git.
 
 ```env
 PORT=3000
@@ -28,7 +80,7 @@ DATA_DIR=.
 APP_SESSION_SECRET=replace-with-at-least-32-random-characters
 GOOGLE_CLIENT_ID=your-google-oauth-client-id
 GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
-GOOGLE_ALLOWED_EMAILS=your-account@gmail.com
+GOOGLE_ALLOWED_EMAILS=your-account@example.com
 ```
 
 In Google Cloud Console, create an OAuth client with application type `Web application` and add this authorized redirect URI:
@@ -49,31 +101,23 @@ Open:
 http://localhost:3000
 ```
 
-If `database.json` does not exist, the server bootstraps a sanitized demo database from `fixtures/demo-database.json`. Replace it with your real ignored `database.json` when restoring production data locally.
+## Verification
 
-## Privacy Boundary
-
-Tracked demo and example files:
-
-- `fixtures/demo-database.json`
-- `database.example.json`
-
-Ignored live files:
-
-- `database.json`
-- `session_handoff.md`
-- `backups/*.json`
-- `.env`
-- `data/`
-
-Run this before pushing:
+Run the same checks used for local review and CI:
 
 ```bash
 pnpm run verify
-pnpm run doctor
+pnpm run lint
+pnpm run build
 ```
 
-`pnpm run verify` checks auth, API protection, Git privacy, accounting invariants, rollover behavior, and portability.
+`pnpm run verify` runs:
+
+- Google auth and API protection tests
+- Git privacy checks
+- Accounting invariant checks
+- Monthly rollover checks
+- Portability checks for macOS LaunchAgent generation
 
 For local sensitive-term scanning, put one private term per line in an ignored `.privacy-terms` file and run:
 
@@ -91,9 +135,9 @@ PRIVACY_GREP_TERMS_FILE=.privacy-terms pnpm run verify
 
 All other `/api/*` endpoints require a signed HttpOnly cookie. Sessions use `SameSite=Lax`, expire after 7 days, and set `Secure` automatically in production. Google OAuth tokens are only used during callback handling and are not stored in `database.json`.
 
-## Railway Deploy
+## Deployment Notes
 
-Set Railway variables:
+For Railway-style deployment, set these variables and attach a persistent volume mounted at `/data`:
 
 ```env
 DATA_DIR=/data
@@ -102,17 +146,15 @@ PORT=3000
 APP_SESSION_SECRET=replace-with-at-least-32-random-characters
 GOOGLE_CLIENT_ID=your-google-oauth-client-id
 GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
-GOOGLE_ALLOWED_EMAILS=your-account@gmail.com
+GOOGLE_ALLOWED_EMAILS=your-account@example.com
 NODE_ENV=production
 ```
 
-In the Google OAuth client, add the Railway callback URL:
+In the Google OAuth client, add the deployment callback URL:
 
 ```text
-https://your-railway-domain.example/api/auth/callback
+https://your-domain.example/api/auth/callback
 ```
-
-Attach a persistent volume mounted at `/data`.
 
 Build command:
 
@@ -147,14 +189,16 @@ Remove it:
 pnpm run launchd:uninstall
 ```
 
-The generated LaunchAgent runs `server.cjs`; the server reads the ignored `.env` file from the project directory.
+The tracked `com.nc8.subscription-billing.plist` is a template only. The install script generates a machine-specific plist in `~/Library/LaunchAgents`.
 
-## Accounting Protections
+## Portfolio Framing
 
-- Tamper-evident ledger summary at `GET /api/ledger`
-- Close readiness preview at `GET /api/close-preview`
-- Atomic settings save at `POST /api/update-config-bundle`
-- Duplicate payment and temporary charge detection within 10 minutes
-- Void transactions instead of hard deletion
-- Archive members and platforms instead of hard deletion
-- Sanitized fixture includes an intentional duplicate-seat case so the verifier protects the multi-seat business rule without exposing real names
+For interviews, the important parts of this project are not the niche subscription workflow itself. The transferable parts are:
+
+- turning an informal spreadsheet process into structured data and API operations
+- designing exception checks before monthly close
+- protecting private operational data from public Git tracking
+- using OAuth and signed sessions to restrict access
+- writing repeatable verification for auth, accounting, privacy, and rollover behavior
+
+See [`docs/recruiter-brief.md`](docs/recruiter-brief.md) for a short version that can be shared in an application message.
