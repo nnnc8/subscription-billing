@@ -95,7 +95,7 @@ function App() {
 
   // AI assistant states
   const [aiMessages, setAiMessages] = useState([
-    { role: 'assistant', content: '哈囉！我是 Antigravity 帳務小幫手。我可以幫您查詢成員當前的餘額、歷史交易、系統狀態，或者幫您檢查帳務警告！請在下方輸入您的問題。' }
+    { role: 'assistant', content: '您好！我是您的帳務智能助理。您可以向我查詢成員餘額、歷史交易、系統狀態，或是檢查帳務警告。請隨時在下方輸入您的問題！' }
   ]);
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
@@ -726,7 +726,7 @@ function App() {
 
       const result = await res.json();
       if (result.success) {
-        const greeting = { role: 'assistant', content: '哈囉！我是 Antigravity 帳務小幫手。我可以幫您查詢成員當前的餘額、歷史交易、系統狀態，或者幫您檢查帳務警告！請在下方輸入您的問題。' };
+        const greeting = { role: 'assistant', content: '您好！我是您的帳務智能助理。您可以向我查詢成員餘額、歷史交易、系統狀態，或是檢查帳務警告。請隨時在下方輸入您的問題！' };
         setAiMessages(prev => prev.length === 0
           ? [greeting, ...result.history]
           : result.history
@@ -1322,37 +1322,37 @@ function App() {
   const latestLedgerEvent = ledger.recent?.[0];
   const systemPosture = !closeGateClear ? 'RISK HOLD' : priorityReceivable ? 'COLLECT' : 'READY';
   const navItems = [
-    { id: 'dashboard', code: '01', label: '總覽', helper: 'Ops overview' },
-    { id: 'subscriptions', code: '02', label: '名額', helper: 'Seat allocations' },
-    { id: 'config', code: '03', label: '設定', helper: 'Pricing and recovery' },
-    { id: 'history', code: '04', label: '封存', helper: 'Historical closes' },
-    { id: 'ai-assistant', code: '05', label: 'AI 助理', helper: 'Chat & RAG queries' }
+    { id: 'dashboard', code: '📊', label: '總覽' },
+    { id: 'subscriptions', code: '👥', label: '訂閱名額' },
+    { id: 'config', code: '⚙️', label: '設定' },
+    { id: 'history', code: '📋', label: '歷史紀錄' },
+    { id: 'ai-assistant', code: '✨', label: 'AI 助理' }
   ];
   const tabMeta = {
     dashboard: {
-      kicker: 'SETTLEMENT OPERATIONS',
-      title: '帳務指揮台',
-      description: '集中查看待收暴露、收款操作、月結門檻與可追溯事件鏈。'
+      kicker: '',
+      title: '總覽',
+      description: '查看帳務概況、待收款項與本期收支狀態。'
     },
     subscriptions: {
-      kicker: 'SEAT OWNERSHIP',
-      title: '名額配置台',
-      description: '管理每位成員的訂閱名額、起算月份與退出月份。'
+      kicker: '',
+      title: '訂閱名額',
+      description: '管理成員的訂閱配置與起算月份。'
     },
     config: {
-      kicker: 'SYSTEM PARAMETERS',
-      title: '定價與復原控制台',
-      description: '維護單價、期初餘額、文字設定與還原檢查點。'
+      kicker: '',
+      title: '設定',
+      description: '調整定價、期初餘額與系統偏好。'
     },
     history: {
-      kicker: 'ARCHIVE INTELLIGENCE',
-      title: '歷史封存與對帳',
-      description: '回看每期結帳、封存鏈健康與過往收支明細。'
+      kicker: '',
+      title: '歷史紀錄',
+      description: '瀏覽過往帳期的結帳紀錄與封存狀態。'
     },
     'ai-assistant': {
-      kicker: 'GENERATIVE INTELLIGENCE',
-      title: 'AI 帳務助理',
-      description: '使用大語言模型與 RAG (檢索增強生成)，透過對話分析及查詢您的訂閱帳務資料。'
+      kicker: '',
+      title: 'AI 助理',
+      description: '透過對話查詢帳務資料與分析。'
     }
   };
   const activeTabMeta = tabMeta[activeTab] || tabMeta.dashboard;
@@ -1366,47 +1366,43 @@ function App() {
             <span className="logo-icon">SB</span>
           </div>
           <div className="logo-copy">
-            <span className="eyebrow">Subscription Billing</span>
-            <span className="logo-text">Operator Console</span>
+            <span className="eyebrow">Billing</span>
+            <span className="logo-text">訂閱帳務</span>
           </div>
         </div>
         
         <nav className="nav-links">
           {navItems.map(item => (
             <div key={item.id} className={`nav-item ${activeTab === item.id ? 'active' : ''}`} onClick={() => setActiveTab(item.id)}>
-              <span className="nav-code">{item.code}</span>
-              <span className="nav-copy">
-                <strong className="nav-label">{item.label}</strong>
-                <small className="nav-helper">{item.helper}</small>
-              </span>
-              {item.id === 'config' && configDirty && <span className="nav-pill">draft</span>}
+              <span style={{ fontSize: '1rem', lineHeight: 1 }}>{item.code}</span>
+              <span className="nav-label">{item.label}</span>
+              {item.id === 'config' && configDirty && <span className="nav-pill">草稿</span>}
             </div>
           ))}
         </nav>
 
         <div className="rail-section">
-          <span className="rail-heading">Live Signals</span>
+          <span className="rail-heading">即時狀態</span>
           <div className="rail-card">
-            <span className="rail-card-label">System posture</span>
-            <strong className="rail-card-value">{systemPosture}</strong>
-            <small className="rail-card-note">{auditWarnings.length} audit items · {ledger.count || 0} ledger writes</small>
+            <span className="rail-card-label">系統狀態</span>
+            <strong className="rail-card-value">{systemPosture === 'READY' ? '正常' : systemPosture === 'COLLECT' ? '待收款' : '需處理'}</strong>
+            <small className="rail-card-note">{auditWarnings.length} 個提醒 · {ledger.count || 0} 筆紀錄</small>
           </div>
           <div className="rail-card">
-            <span className="rail-card-label">Open exposure</span>
+            <span className="rail-card-label">待收金額</span>
             <strong className="rail-card-value">{formatMoney(totalReceivables)}</strong>
-            <small className="rail-card-note">{unpaidMembersCount} members require action</small>
+            <small className="rail-card-note">{unpaidMembersCount} 位成員未結清</small>
           </div>
           <div className="rail-card">
-            <span className="rail-card-label">Latest write</span>
-            <strong className="rail-card-value">{latestLedgerEvent ? formatEventTime(latestLedgerEvent.at) : 'No events'}</strong>
-            <small className="rail-card-note">{latestLedgerEvent ? latestLedgerEvent.summary : 'Waiting for first ledger event'}</small>
+            <span className="rail-card-label">最近操作</span>
+            <strong className="rail-card-value">{latestLedgerEvent ? formatEventTime(latestLedgerEvent.at) : '尚無紀錄'}</strong>
+            <small className="rail-card-note">{latestLedgerEvent ? latestLedgerEvent.summary : '等待第一筆操作'}</small>
           </div>
         </div>
 
         <div className="sidebar-footer">
-          <p>local operator node</p>
-          <p style={{ fontSize: '0.7rem', marginTop: '0.25rem' }}>{data.currentMonth} · solo operator mode</p>
-          {authUser?.email && <p style={{ fontSize: '0.68rem', marginTop: '0.25rem' }}>{authUser.email}</p>}
+          <p>{data.currentMonth} · 單一操作者模式</p>
+          {authUser?.email && <p style={{ fontSize: '0.7rem', marginTop: '0.25rem' }}>{authUser.email}</p>}
           <button className="sidebar-logout" type="button" onClick={handleLogout}>
             登出
           </button>
@@ -1444,7 +1440,7 @@ function App() {
         {activeTab === 'dashboard' && (
           <section className={`operator-briefing ${closeGateClear ? 'steady' : 'risk'}`}>
             <div className="operator-main">
-              <span className="operator-kicker">Command Priority</span>
+              <span className="operator-kicker">當前重點</span>
               <h2>{operatorHeadline}</h2>
               <p>{operatorDetail}</p>
               <div className="operator-actions">
@@ -1470,7 +1466,7 @@ function App() {
 
             <div className="operator-grid">
               <div className="operator-card">
-                <span>Collection queue</span>
+                <span>待收清單</span>
                 <strong>{formatMoney(totalReceivables)}</strong>
                 <small>{unpaidMembersCount} 人待收 · 收回 {collectionRate}%</small>
                 <div className="queue-list">
@@ -1491,7 +1487,7 @@ function App() {
               </div>
 
               <div className="operator-card">
-                <span>Close gate</span>
+                <span>月結狀態</span>
                 <strong>{closeGateClear ? '可預檢' : '暫停'}</strong>
                 <small>{totalReceivables > 0 ? `${formatMoney(totalReceivables)} 將結轉為下期前期餘額` : '本期已全數結清'}</small>
                 <div className="gate-list">
@@ -1502,7 +1498,7 @@ function App() {
               </div>
 
               <div className="operator-card">
-                <span>Evidence chain</span>
+                <span>事件鏈</span>
                 <strong>{ledger.ok && historyIntegrity.ok ? '可追溯' : '需檢查'}</strong>
                 <small>{latestLedgerEvent ? `最後操作：${formatLedgerType(latestLedgerEvent.type)} · ${formatEventTime(latestLedgerEvent.at)}` : '尚無事件記錄'}</small>
                 <div className="evidence-strip">
@@ -1578,8 +1574,8 @@ function App() {
           <section className="ledger-panel">
             <div className="ledger-header">
               <div>
-                <span>Tamper-evident ledger</span>
-                <h2>Recent writes</h2>
+                <span>事件紀錄</span>
+                <h2>最近操作</h2>
               </div>
               <code>{ledger.lastHash ? ledger.lastHash.slice(0, 12) : 'genesis'}</code>
             </div>

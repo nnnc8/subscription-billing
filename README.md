@@ -1,134 +1,54 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://capsule-render.vercel.app/api?type=waving&color=0:e82127,100:000000&height=220&section=header&text=Subscription%20Billing%20Ecosystem&fontSize=42&fontColor=fff&animation=fadeIn">
-  <img alt="banner" src="https://capsule-render.vercel.app/api?type=waving&color=0:e82127,100:000000&height=220&section=header&text=Subscription%20Billing%20Ecosystem&fontSize=42&fontColor=fff&animation=fadeIn" width="100%">
-</picture>
-
 <div align="center">
 
-### **⚡️ Tesla-Inspired Minimalist Subscription Billing Ecosystem**
-*A premium, high-performance, single-operator subscription billing console. Migrated to 100% TypeScript ESM, upgraded to a high-concurrency WAL SQLite relational database, and integrated with a lightning-fast Vitest suite.*
+# subscription-billing
 
-[![CI/CD Build](https://github.com/nnnc8/subscription-billing/actions/workflows/verify.yml/badge.svg)](https://github.com/nnnc8/subscription-billing/actions/workflows/verify.yml)
-[![Node Runtime](https://img.shields.io/badge/node-22%2B-000000?logo=node.js&logoColor=white)](https://nodejs.org)
-[![TypeScript Inside](https://img.shields.io/badge/TypeScript-6-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![React Frontend](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev)
-[![Database Engine](https://img.shields.io/badge/SQLite-WAL_Mode-003B57?logo=sqlite&logoColor=white)](https://sqlite.org)
-[![Vitest Runner](https://img.shields.io/badge/Vitest-Modern_Tests-7A9B35?logo=vitest&logoColor=white)](https://vitest.dev)
-[![Design Language](https://img.shields.io/badge/UI/UX-Tesla_Style-e82127)](src/index.css)
+**A self-hosted subscription billing console for shared service management.**
 
-[Features](#features) • [System Architecture](#system-architecture) • [Tesla UI/UX Design System](#tesla-uiux-design-system) • [Quick Start](#quick-start) • [AI capabilities](#ai-capabilities) • [API Directory](#api-directory) • [Vitest Verification](#verification--testing)
+Manage members, track payments, generate invoices, and reconcile accounts — all from a single dashboard with built-in AI assistance.
+
+[![CI](https://github.com/nnnc8/subscription-billing/actions/workflows/verify.yml/badge.svg)](https://github.com/nnnc8/subscription-billing/actions/workflows/verify.yml)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5+-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Node.js](https://img.shields.io/badge/Node.js-22+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 </div>
 
 ---
 
-## Technical Transformation Milestone (Phase 1-3)
-
-We have successfully completed a major engineering refactor of the entire codebase from a legacy prototype to a high-end, scalable enterprise architecture:
-*   **TypeScript ESM Migration**: Fully migrated both frontend and backend to **100% typed TypeScript ESM** with project references (`NodeNext` module resolution).
-*   **SQLite Relational Upgrades**: Replaced legacy file persistence with a fully normalized relational **SQLite database (`better-sqlite3`)** executing in high-concurrency WAL mode, retaining a synced JSON file cache to preserve perfect backward compatibility.
-*   **Vitest Test Suites**: Integrated the modern **Vitest testing runner** and migrated all unit/integration tests to TypeScript, executing a full test suite in under 30 milliseconds.
-*   **Modular Component Splitting**: Deconstructed a monolithic 2,800+ line frontend file into highly isolated, typed, and clean React `.tsx` components (`HistoryTab.tsx`, `SubscriptionsTab.tsx`, `AiAssistantTab.tsx`).
-
----
-
 ## Features
 
-| Capability | Technical Specifications |
-| :--- | :--- |
-| **📊 Cyber Dashboard** | High-contrast cards with dynamic member ledger breakdowns, real-time balance calculations, payment history, and temporal fee additions. |
-| **🔒 Google Security Guard** | Cryptographically signed `HttpOnly` session cookies with Google OAuth authentication, restricted via specific email allowlists. |
-| **🛢️ SQLite Relational DB** | 8 relational tables (`platforms`, `members`, `subscriptions`, etc.) with atomic transaction locks, schema validations, and high-concurrency WAL mode. |
-| **📋 Subscription Dispatcher** | Per-member subscription mapping supporting fixed pricing as well as dynamic splits (equally dividing cost among active seats). |
-| **🤖 AI Accounting Agent** | Natural-language chat powered by Google Gemini, featuring sequental tool calling and automated multi-turn reasoning on active databases. |
-| **✍️ AI Reminders (5 Styles)** | LLM-generated payment reminders supporting 5 mood tones (friendly, business, poetic, pirate, urgent) with localized template fallbacks. |
-| **🔍 In-Memory RAG Engine** | Embedded vector indexing (`gemini-embedding-2`) of transactional events with Cosine Similarity queries to feed contextual history to Gemini. |
-| **📦 Backup & Rollback Logs** | Automated pre-write database backups with timestamp labels, size counts, and full restore-impact analysis previews. |
-| **🕵️ Hash-Linked Ledger** | Tamper-evident accounting ledger linking events in a cryptographically secure hash-chain (SHA-256) to ensure absolute auditability. |
+- 📊 **Dashboard** — Real-time balance tracking, receivables overview, and collection rate metrics
+- 👥 **Member Management** — Add, archive, and track subscription members with per-member pricing
+- 💳 **Payment Recording** — Log payments with duplicate detection, void support, and full audit trail
+- 📋 **Monthly Settlement** — Automated month-close with balance carryover and readiness checks
+- 🤖 **AI Assistant** — Natural language billing queries powered by Google Gemini with function calling
+- 🔍 **RAG Search** — Vector-indexed transaction history for context-aware AI responses
+- ✉️ **Invoice Generation** — AI-generated payment reminders in 5 tones (friendly, formal, pirate, poetic, urgent)
+- 🔒 **Google OAuth** — Allowlisted email authentication with signed HttpOnly session cookies
+- 🛡️ **Tamper-Evident Ledger** — SHA-256 hash-linked event chain for audit integrity
+- 💾 **Backup & Restore** — Timestamped snapshots with restore-impact previews
 
----
+## Tech Stack
 
-## System Architecture
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 19, Vite 8 |
+| Backend | Express 5, TypeScript ESM |
+| Database | SQLite (WAL mode) via `better-sqlite3` |
+| AI | Google Gemini (AI Studio / Vertex AI) |
+| Auth | Google OAuth 2.0 |
+| Testing | Vitest |
+| Deployment | Docker, macOS LaunchAgent |
 
-Our newly refactored ESM architecture provides full isolation of duties across layers:
-
-```mermaid
-graph TB
-    subgraph Client ["Client (Tesla Dark UI)"]
-        React["React SPA (Vite 8)"]
-        HistoryTab["HistoryTab.tsx"]
-        SubTab["SubscriptionsTab.tsx"]
-        AiTab["AiAssistantTab.tsx"]
-        React --> HistoryTab
-        React --> SubTab
-        React --> AiTab
-    end
-
-    subgraph Server ["Express 5 API Server (TypeScript ESM)"]
-        Auth["Auth Middleware<br/>Google OAuth + Cookies"]
-        API["API Route Router<br/>/api/*"]
-        Acc["Accounting Engine<br/>lib/accounting.ts"]
-        DB["SQLite DB Layer<br/>lib/db.ts"]
-        AI["AI Client Layer<br/>lib/ai.ts"]
-        RAG["RAG Vector Store<br/>lib/rag.ts"]
-        Remind["Reminder Generator<br/>lib/ai-reminder.ts"]
-        Assistant["AI Assistant Agent<br/>lib/ai-assistant.ts"]
-    end
-
-    subgraph Storage ["Performance Storage"]
-        SQLite["database.db (WAL SQLite)<br/>Normalized relational state"]
-        JSONCache["database.json (Synced Cache)<br/>Backward-compat copy"]
-        Backups["backups/*.json<br/>Pre-write snapshots"]
-        Vector["In-memory Vector DB<br/>Cosine similarity index"]
-    end
-
-    subgraph External ["External Services"]
-        Google["Google OAuth 2.0"]
-        Gemini["Gemini AI Studio API"]
-    end
-
-    Client -->|HTTP REST / JSON| Auth
-    Auth --> API
-    API --> Acc
-    API --> DB
-    API --> Remind
-    API --> Assistant
-    
-    DB -->|Read/Write| SQLite
-    DB -.->|Write Sync| JSONCache
-    DB -.->|Backup Snapshots| Backups
-    
-    Assistant --> AI
-    Assistant --> RAG
-    RAG --> Vector
-    SQLite -.->|Build Embedding Index| Vector
-    
-    AI --> Gemini
-    Client -->|OAuth Redirect| Google
-    Google -->|Auth Callback| Auth
-```
-
----
-
-## Tesla UI/UX Design System
-
-The console is fully styled with a high-end, premium design language inspired by Tesla's minimalist electric vehicle screens:
-
-*   **Color Palette**: Pure deep black (`#000000`) background combined with performance red accents (`#e82127`) and subtle glowing neon elements.
-*   **Precision Borders**: Thin, razor-sharp outlines (`rgba(255, 255, 255, 0.08)`) with minimalist `4px` borders, creating an industrial, solid, high-tech structure.
-*   **Hyper-Smooth Easing**: Interactive transitions driven by Tesla’s signature bezier curves (`cubic-bezier(0.16, 1, 0.3, 1)`) for premium feedback response.
-*   **Visual Ergonomics**: Spatial layout with high contrast, large numeric typography, frosted glass overlays (`backdrop-filter`), and tactical dashboard card metrics.
-
----
-
-## Quick Start
+## Getting Started
 
 ### Prerequisites
 
-*   **Node.js** 22+ and **pnpm** 11+
-*   A Google Cloud console account with active OAuth Credentials
+- [Node.js](https://nodejs.org) 22+
+- [pnpm](https://pnpm.io) 11+
+- A [Google Cloud Console](https://console.cloud.google.com) project with OAuth credentials
 
-### 1. Clone & Dependencies
+### Installation
 
 ```bash
 git clone https://github.com/nnnc8/subscription-billing.git
@@ -136,121 +56,156 @@ cd subscription-billing
 pnpm install
 ```
 
-### 2. Configure Environment
+### Configuration
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and fill in the environment parameters:
+Edit `.env` with your credentials:
 
 ```env
 PORT=3000
 HOST=127.0.0.1
-APP_SESSION_SECRET=tesla_performance_secret_32_characters_long
-GOOGLE_CLIENT_ID=your-google-oauth-client-id
-GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
-GOOGLE_ALLOWED_EMAILS=owner@example.com
+APP_SESSION_SECRET=<random-32-char-string>
+GOOGLE_CLIENT_ID=<your-oauth-client-id>
+GOOGLE_CLIENT_SECRET=<your-oauth-client-secret>
+GOOGLE_ALLOWED_EMAILS=you@example.com
+GOOGLE_GEMINI_API_KEY=<your-gemini-api-key>  # Optional, enables AI features
 ```
 
-### 3. Bootstrap & Boot
+### Running
 
-Run the production bundler to build client assets and spin up the TypeScript Express API server directly via `tsx` (no compiled Javascript files needed in the project directory!):
+**Development** (hot reload):
+
+```bash
+pnpm dev      # Vite dev server (frontend)
+pnpm api      # Express API server (backend)
+```
+
+**Production**:
 
 ```bash
 pnpm run build
-pnpm run start
+pnpm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and log in with an approved Google account.
+Open [http://localhost:3000](http://localhost:3000) and sign in with an approved Google account.
 
----
+## Architecture
 
-## AI Capabilities
+```mermaid
+graph TB
+    subgraph Client ["Frontend"]
+        React["React SPA"]
+    end
 
-### 🤖 Multi-Turn AI Assistant
-The chat assistant behaves like an elite financial operations assistant. It answers complex billing inquiries by sequentially and autonomously calling a rich set of system tools:
-*   `get_member_balance`: Queries active member statements.
-*   `get_member_history`: Reviews past payment ledgers.
-*   `get_payment_records`: Collects full active payments history.
-*   `get_accounting_warnings`: Pulls real-time accounting alerts.
-*   `get_system_snapshot`: Obtains general system health state.
-*   `get_close_preview`: Inspects month-close readiness blockages.
+    subgraph Server ["API Server (Express 5)"]
+        Auth["Auth Middleware"]
+        API["REST Router"]
+        Accounting["Accounting Engine"]
+        DB["Database Layer"]
+        AI["AI Client"]
+        RAG["RAG Engine"]
+        Reminder["Reminder Generator"]
+        Assistant["AI Assistant"]
+    end
 
-### 🔍 Custom Embedded RAG Engine
-The built-in RAG pipeline uses `gemini-embedding-2` to vectorize all payments, fee adjustments, and member settings. It builds an in-memory vector index instantly on write. When querying AI, Cosine Similarity pulls the most relevant historical rows and injects them as trusted prompts to Gemini, providing context-aware responses with zero prompt bloat!
+    subgraph Storage ["Storage"]
+        SQLite["SQLite (WAL)"]
+        Vector["Vector Index"]
+    end
 
----
+    subgraph External ["External"]
+        Google["Google OAuth"]
+        Gemini["Gemini API"]
+    end
 
-## API Directory
+    React -->|REST| Auth --> API
+    API --> Accounting --> DB --> SQLite
+    API --> Assistant --> AI --> Gemini
+    Assistant --> RAG --> Vector
+    API --> Reminder --> AI
+    React -->|OAuth| Google --> Auth
+```
 
-### Auth
+## Project Structure
 
-*   `GET  /api/auth/login` - Triggers Google OAuth redirection.
-*   `GET  /api/auth/callback` - Callback handler exchanging tokens and setting `HttpOnly` session cookies.
-*   `POST /api/auth/logout` - Revokes session and deletes cookies.
-*   `GET  /api/auth/session` - Verifies current user profile state.
+```
+subscription-billing/
+├── server.ts                # Express API server
+├── src/
+│   ├── App.jsx              # Main React application
+│   ├── components/          # React components (tsx)
+│   ├── types/               # TypeScript type definitions
+│   └── index.css            # Design system
+├── lib/
+│   ├── accounting.ts        # Accounting engine & ledger
+│   ├── ai.ts                # Gemini AI client
+│   ├── ai-assistant.ts      # Function-calling chat agent
+│   ├── ai-reminder.ts       # Invoice text generation
+│   ├── rag.ts               # Vector search & indexing
+│   ├── db.ts                # SQLite database layer
+│   ├── auth.ts              # Session & cookie auth
+│   └── google-oauth.ts      # OAuth flow handler
+├── tests/                   # Vitest test suites
+├── docs/                    # Documentation
+├── Dockerfile               # Multi-stage container build
+└── docker-compose.yml       # Container orchestration
+```
 
-### Operations & Configurations
-
-*   `GET  /api/data` - Returns authoritative state mapped from WAL SQLite database.
-*   `POST /api/payment` - Records payment (validating duplicate transactions within a 10-minute window).
-*   `DELETE /api/payment/:id` - Voids payment and seals the change with the ledger event.
-*   `POST /api/temp-charge` - Records a dynamic custom fee.
-*   `POST /api/update-config-bundle` - Atomically commits bulk settings updates for platforms, price plans, bank accounts, and reminder tone styles.
-*   `POST /api/settle` - Performs monthly period settlements, links rollover balance ledgers, and seals previous month history.
-
----
-
-## Verification & Testing
-
-Our testing environment uses **Vitest** for unit and accounting verification, combined with bash automation for general pipeline audits:
+## Testing
 
 ```bash
-# Execute the full Vitest suite (18 modern TS assertions, runs in <30ms!)
+# Unit tests (Vitest)
 pnpm test
 
-# Run the complete end-to-end integration and verification pipeline
+# Full verification pipeline (auth, privacy, accounting, portability)
 pnpm run verify
 
-# Lint the workspace
+# Linting
 pnpm run lint
 ```
 
-`pnpm test` runs three fully typed, modern testing units:
-1.  **`accounting.test.ts`**: Verifies 11 core accounting calculations including balance rollovers, voided payments, member archiving, duplicate charge rules, and ledger signatures.
-2.  **`privacy.test.ts`**: Ensures sensitive configuration variables (`.env`, `database.json`, `.tmp` files) never leak into git-tracked trees.
-3.  **`portability.test.ts`**: Validates cross-platform file paths and macOS Plist LaunchAgent service generators.
-
----
-
-## AI-Assisted Development
-
-This codebase was modernized and extended using **Antigravity** (Google DeepMind's agentic AI coding assistant) for pair programming, architectural planning, and test-driven refactoring. 
-
-Key developer-agent collaborative steps are documented in [docs/ai-development-log.md](docs/ai-development-log.md).
-
----
-
 ## Deployment
 
-### Cloud Containers (Docker)
-The modernized `Dockerfile` compiles Vite assets and launches our TSX server natively with minimal footprint:
+### Docker
 
 ```bash
 docker compose up --build -d
 ```
 
-### macOS Background Daemon
-Run the console natively in the background of macOS. Our LaunchAgent installer automatically detects your local node runtime and builds a localized plist:
+### macOS Background Service
 
 ```bash
-pnpm run launchd:install   # Installs background service daemon
-pnpm run launchd:uninstall # Uninstalls background daemon
+pnpm run launchd:install    # Install as LaunchAgent
+pnpm run launchd:uninstall  # Remove service
 ```
 
----
+## API Reference
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/data` | Full application state |
+| `POST` | `/api/payment` | Record a payment |
+| `DELETE` | `/api/payment/:id` | Void a payment |
+| `POST` | `/api/temp-charge` | Record a temporary charge |
+| `POST` | `/api/update-config-bundle` | Batch update settings |
+| `GET` | `/api/close-preview` | Month-close readiness check |
+| `POST` | `/api/settle` | Execute monthly settlement |
+| `POST` | `/api/ai/chat` | AI assistant conversation |
+| `POST` | `/api/ai/generate-reminder` | Generate invoice text |
+| `GET` | `/api/backups` | List backup snapshots |
+| `POST` | `/api/backups/create` | Create backup |
+| `POST` | `/api/backups/restore` | Restore from backup |
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feat/new-feature`)
+3. Commit changes using [Conventional Commits](https://www.conventionalcommits.org) (`feat:`, `fix:`, `docs:`)
+4. Push and open a Pull Request
 
 ## License
 
-MIT © 2026. This project is released for demonstration and educational portfolio purposes.
+MIT © 2026

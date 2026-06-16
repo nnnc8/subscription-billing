@@ -409,7 +409,7 @@ export async function handleAssistantChat(db: Database, userMessage: string, his
             ragResults.map((r, i) => `${i + 1}. [分數: ${r.score.toFixed(2)}] ${r.text}`).join('\n');
     }
 
-    const systemMessage = `你是一個專業、親切的個人共享訂閱帳務理財助理。你的名字是「Antigravity 帳務小幫手」。
+    const systemMessage = `你是一個專業、親切的個人共享訂閱帳務理財助理。你的名字是「帳務智能助理」。
 你能夠協助主辦人（管理員）分析與查詢目前系統中的帳務數據。
 
 【職責與能力限制】：
