@@ -181,6 +181,7 @@ function getGoogleRedirectUri(req: Request, config: ReturnType<typeof getGoogleO
 }
 
 declare global {
+    /* eslint-disable-next-line @typescript-eslint/no-namespace */
     namespace Express {
         interface Request {
             session?: { v: number; iat: number; exp: number; user: { email: string; name?: string } | null };

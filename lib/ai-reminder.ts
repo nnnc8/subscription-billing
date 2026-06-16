@@ -89,9 +89,7 @@ ${activeSubsText.length > 0 ? activeSubsText.join('\n') : '  • 本期無訂閱
     }
 }
 
-interface FallbackParams extends ReminderParams {}
-
-function getFallbackReminder({ member, summary, activeSubsText, bankInfo, currentMonth, style }: FallbackParams): string {
+function getFallbackReminder({ member, summary, activeSubsText, bankInfo, currentMonth, style }: ReminderParams): string {
     const absOutstanding = Math.abs(summary.outstanding);
     const useStyle = style || 'friendly';
 

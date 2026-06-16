@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-// @ts-ignore
+// @ts-expect-error: import legacy .cjs utilities for portability unit tests
 import {
   buildLaunchPath,
   createLaunchAgentPlist,

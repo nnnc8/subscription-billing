@@ -16,6 +16,7 @@ interface OpenAIClient {
 }
 
 function getOpenAIClient(): OpenAIClient {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { OpenAI } = require('openai');
     const config = {
         apiKey: process.env.OPENAI_API_KEY || 'your-openai-api-key-here',

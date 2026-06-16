@@ -21,7 +21,7 @@ interface PortkeyClient {
 
 function getPortkeyClient(): PortkeyClient {
     // Dynamic import to avoid crash when portkey-ai is not installed
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
     const { Portkey } = require('portkey-ai');
     const config = {
         apiKey: process.env.PORTKEY_API_KEY || 'nhHEpfsw5sTpXp1E3PQGDQd03vdN',
@@ -193,7 +193,7 @@ async function callDirectAIStudio(modelName: string, messages: GoogleMessage[], 
 }
 
 export async function chatCompletion(messages: GoogleMessage[], options: Record<string, unknown> = {}): Promise<string> {
-    let modelName = process.env.AI_MODEL || 'gemini-3.1-flash-lite';
+    const modelName = process.env.AI_MODEL || 'gemini-3.1-flash-lite';
     const rawModelName = modelName.replace(/^@vertex-ai\//, '').replace(/^google\//, '');
 
     try {
@@ -232,7 +232,7 @@ export async function chatCompletion(messages: GoogleMessage[], options: Record<
 }
 
 export async function createEmbedding(text: string): Promise<number[]> {
-    let modelName = process.env.AI_EMBEDDING_MODEL || 'gemini-embedding-2';
+    const modelName = process.env.AI_EMBEDDING_MODEL || 'gemini-embedding-2';
     const rawModelName = modelName.replace(/^@vertex-ai\//, '').replace(/^google\//, '');
 
     try {
