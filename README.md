@@ -24,6 +24,7 @@ Subscription Billing Console converts those spreadsheet-like steps into a web co
 - **Google account login**: OAuth login with allowlisted emails, signed HttpOnly session cookies, and protected `/api/*` routes.
 - **Privacy boundary**: real `.env`, `database.json`, backups, and handoff notes are ignored by Git; tracked demo data is sanitized.
 - **Regression verification**: `pnpm run verify` checks authentication, API protection, Git privacy, accounting invariants, rollover behavior, and portability.
+- **Generative AI Capabilities**: Smart billing reminder generation with custom tones (pirate, poetic, professional, friendly, urgent), and an interactive AI accounting assistant utilizing function calling and RAG.
 
 ## Tech Stack
 
@@ -34,6 +35,7 @@ Subscription Billing Console converts those spreadsheet-like steps into a web co
 - Node.js 20+
 - GitHub Actions
 - pnpm
+- **AI Integration**: Google Gemini (via AI Studio / Vertex AI), In-memory RAG, and tool calling.
 
 ## Demo Data And Privacy
 
@@ -190,6 +192,25 @@ pnpm run launchd:uninstall
 ```
 
 The tracked `com.nc8.subscription-billing.plist` is a template only. The install script generates a machine-specific plist in `~/Library/LaunchAgents`.
+
+## AI Features and Architecture
+
+This application showcases several advanced Generative AI and LLM integration patterns, optimized for robust production application:
+
+1. **AI-Powered Billing Reminders (Prompt Engineering & Fallbacks)**:
+   - Instead of static string templates, operators can use the **AI Generate** feature to customize billing messages using Google Gemini.
+   - Supports five tone styles: *Friendly & Humorous*, *Professional & Formal*, *Wild Pirate*, *Poetic/Aesthetic*, and *Politely Urgent*.
+   - Implements a strict fallback to local templates if the API key is missing or calls fail, ensuring zero disruption to the operator's checkout workflow.
+
+2. **AI Accounting Assistant (OpenAI Compatible Function Calling)**:
+   - Operators can converse with an interactive AI accountant in a premium chat window.
+   - Built with OpenAI-compatible tool calling. The assistant can autonomously request data via database search functions like `get_member_balance`, `get_member_history`, `get_payment_records`, `get_accounting_warnings`, and `get_system_snapshot`.
+   - Handles multi-turn function loops to calculate details and verify state before responding.
+
+3. **In-Memory RAG Pipeline (Retrieval-Augmented Generation)**:
+   - To query system logs, past months' balances, and historical ledger events without bloating the LLM context, we implement a custom in-memory vector indexing pipeline.
+   - Generates text chunks of ledger events, history summaries, payments, platform pricing, and active memberships.
+   - Rebuilds dynamically when writes occur and computes cosine similarity of query embeddings to inject the top matching historical context into the prompt, enabling the assistant to answer historical questions like *"How much did Beta pay in past months?"*.
 
 ## Portfolio Framing
 

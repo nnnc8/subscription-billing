@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
-const API_BASE = window.location.port === '5173'
-  ? 'http://localhost:3000/api'
-  : `${window.location.origin}/api`;
+// Vite dev server has a proxy that forwards /api -> http://127.0.0.1:3000
+// so cookies are always same-origin regardless of dev vs. production.
+const API_BASE = '/api';
 
 function buildPriceEditorMap(platforms = []) {
   const priceMap = {};
@@ -65,7 +65,7 @@ function App() {
   
   // History Browser
   const [selectedHistMonth, setSelectedHistMonth] = useState('');
-  const [expandedPreviewMember, setExpandedPreviewMember] = useState(null);
+  const [settingsAiMember, setSettingsAiMember] = useState('');
 
   // CRUD Member form states
   const [newMemberName, setNewMemberName] = useState('');
@@ -89,6 +89,14 @@ function App() {
   // Logs search/filter states
   const [logSearch, setLogSearch] = useState('');
   const [logMemberFilter, setLogMemberFilter] = useState('');
+
+  // AI assistant states
+  const [aiMessages, setAiMessages] = useState([
+    { role: 'assistant', content: '哈囉！我是 Antigravity 帳務小幫手。我可以幫您查詢成員當前的餘額、歷史交易、系統狀態，或者幫您檢查帳務警告！請在下方輸入您的問題。' }
+  ]);
+  const [aiInput, setAiInput] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiReminders, setAiReminders] = useState({}); // mapping: memberId -> { text, loading, style }
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -641,9 +649,111 @@ function App() {
     }
   };
 
+  // Helper: Get final text (AI generated or local template fallback)
+  const getReminderText = (member, summary) => {
+    const aiData = aiReminders[member.id];
+    if (aiData && aiData.text) {
+      return aiData.text;
+    }
+    return generateDetailedReminder(member, summary);
+  };
+
+  // Helper: AI Reminder generation
+  const handleGenerateAIReminder = async (member, summary, style) => {
+    setAiReminders(prev => ({
+      ...prev,
+      [member.id] : {
+        ...prev[member.id],
+        loading: true,
+        style,
+        error: false
+      }
+    }));
+    try {
+      const res = await apiFetch('/ai/generate-reminder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: member.id, style })
+      });
+      const result = await res.json();
+      if (result.success) {
+        setAiReminders(prev => ({
+          ...prev,
+          [member.id]: { text: result.text, loading: false, style, isAI: result.isAI }
+        }));
+        showToast(`已使用 AI 生成本期對帳單！`);
+      } else {
+        showToast("AI 生成失敗：" + (result.error || "未知錯誤"));
+        setAiReminders(prev => ({
+          ...prev,
+          [member.id]: { loading: false, error: true }
+        }));
+      }
+    } catch (err) {
+      console.error('AI reminder generation error:', err);
+      showToast("AI 連線失敗，請檢查網路或 API 設定");
+      setAiReminders(prev => ({
+        ...prev,
+        [member.id]: { loading: false, error: true }
+      }));
+    }
+  };
+
+  // Chat message submission
+  const handleSendChatMessage = async (e) => {
+    if (e) e.preventDefault();
+    if (!aiInput.trim() || aiLoading) return;
+
+    const userMsg = aiInput.trim();
+    setAiInput('');
+    setAiMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    setAiLoading(true);
+
+    try {
+      const historyToSend = aiMessages.filter(m => ['user', 'assistant', 'tool'].includes(m.role));
+
+      const res = await apiFetch('/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMsg,
+          history: historyToSend
+        })
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        const greeting = { role: 'assistant', content: '哈囉！我是 Antigravity 帳務小幫手。我可以幫您查詢成員當前的餘額、歷史交易、系統狀態，或者幫您檢查帳務警告！請在下方輸入您的問題。' };
+        setAiMessages(prev => prev.length === 0
+          ? [greeting, ...result.history]
+          : result.history
+        );
+      } else {
+        showToast("對話失敗：" + (result.error || "未知錯誤"));
+        setAiMessages(prev => [...prev, { role: 'assistant', content: `❌ 對話失敗：${result.error || "伺服器錯誤"}` }]);
+      }
+    } catch (err) {
+      console.error('AI Assistant chat connection error:', err);
+      showToast("連線 AI 助理失敗，請確認伺服器與 API 金鑰狀態");
+      setAiMessages(prev => [...prev, { role: 'assistant', content: "❌ 連線失敗，無法取得 AI 回覆。" }]);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // Scroll to bottom effect
+  useEffect(() => {
+    if (activeTab === 'ai-assistant') {
+      const el = document.getElementById('ai-messages-container');
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+  }, [aiMessages, aiLoading, activeTab]);
+
   // Helper: Redirect to LINE share deep link
   const handleLineShare = (member, summary) => {
-    const text = generateDetailedReminder(member, summary);
+    const text = getReminderText(member, summary);
     const encodedText = encodeURIComponent(text);
     
     // Detect if user is on a mobile device
@@ -658,7 +768,7 @@ function App() {
 
   // Helper: Copy copy-pasteable reminder text to Clipboard
   const copyReminder = (member, summary) => {
-    const text = generateDetailedReminder(member, summary);
+    const text = getReminderText(member, summary);
     navigator.clipboard.writeText(text);
     showToast(`已複製 ${member.name} 的詳細帳單明細！`);
   };
@@ -1212,7 +1322,8 @@ function App() {
     { id: 'dashboard', code: '01', label: '總覽', helper: 'Ops overview' },
     { id: 'subscriptions', code: '02', label: '名額', helper: 'Seat allocations' },
     { id: 'config', code: '03', label: '設定', helper: 'Pricing and recovery' },
-    { id: 'history', code: '04', label: '封存', helper: 'Historical closes' }
+    { id: 'history', code: '04', label: '封存', helper: 'Historical closes' },
+    { id: 'ai-assistant', code: '05', label: 'AI 助理', helper: 'Chat & RAG queries' }
   ];
   const tabMeta = {
     dashboard: {
@@ -1234,6 +1345,11 @@ function App() {
       kicker: 'ARCHIVE INTELLIGENCE',
       title: '歷史封存與對帳',
       description: '回看每期結帳、封存鏈健康與過往收支明細。'
+    },
+    'ai-assistant': {
+      kicker: 'GENERATIVE INTELLIGENCE',
+      title: 'AI 帳務助理',
+      description: '使用大語言模型與 RAG (檢索增強生成)，透過對話分析及查詢您的訂閱帳務資料。'
     }
   };
   const activeTabMeta = tabMeta[activeTab] || tabMeta.dashboard;
@@ -1635,72 +1751,16 @@ function App() {
                       <button className="btn btn-success" style={{ width: '100%', marginTop: '0.25rem' }} onClick={() => handleLineShare(member, summary)}>
                         送出 LINE 帳單
                       </button>
-                      
                       <div style={{ display: 'flex', width: '100%', gap: '0.25rem', marginTop: '0.25rem' }}>
                         <button className="btn btn-secondary" style={{ flexGrow: 1, fontSize: '0.72rem', padding: '0.4rem 0.5rem' }} onClick={() => copyReminder(member, summary)}>
                           複製腳本
                         </button>
-                        <button 
-                          className="btn btn-secondary" 
-                          style={{ 
-                            flexGrow: 1, 
-                            fontSize: '0.72rem', 
-                            padding: '0.4rem 0.5rem',
-                            borderColor: expandedPreviewMember === member.name ? '#10b981' : 'var(--panel-border)',
-                            color: expandedPreviewMember === member.name ? '#34d399' : 'var(--text-main)',
-                            background: expandedPreviewMember === member.name ? 'rgba(16, 185, 129, 0.08)' : 'rgba(255,255,255,0.02)'
-                          }} 
-                          onClick={() => setExpandedPreviewMember(expandedPreviewMember === member.name ? null : member.name)}
-                        >
-                          {expandedPreviewMember === member.name ? '收合預覽' : '展開預覽'}
-                        </button>
                       </div>
                     </div>
-
-                    {/* Expandable LINE Chat Bubble Message Preview */}
-                    {expandedPreviewMember === member.name && (
-                      <div style={{
-                        marginTop: '0.5rem',
-                        padding: '0.75rem',
-                        background: 'rgba(0,0,0,0.18)',
-                        borderRadius: '10px',
-                        border: '1px solid rgba(255,255,255,0.04)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.4rem',
-                        width: '100%'
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.68rem' }}>
-                          <span style={{ fontWeight: '600', color: '#34d399', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                            LINE 催款訊息預覽
-                          </span>
-                          <span style={{ color: 'var(--text-muted)' }}>
-                            {reminderStyle === 'friendly' ? '🍿 幽默風' : reminderStyle === 'minimal' ? '📱 極簡風' : '📢 正式風'}
-                          </span>
-                        </div>
-                        <div className="line-preview-bubble" style={{
-                          background: 'rgba(16, 185, 129, 0.06)',
-                          color: '#f8fafc',
-                          padding: '0.75rem 0.85rem',
-                          borderRadius: '12px',
-                          borderTopRightRadius: '2px',
-                          fontSize: '0.78rem',
-                          whiteSpace: 'pre-wrap',
-                          fontFamily: 'monospace',
-                          lineHeight: '1.45',
-                          maxHeight: '160px',
-                          overflowY: 'auto',
-                          textAlign: 'left',
-                          border: '1px solid rgba(16, 185, 129, 0.2)'
-                        }}>
-                          {generateDetailedReminder(member, summary)}
-                        </div>
-                      </div>
-                    )}
                   </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
 
             {/* Filter Bar */}
             <div className="table-container" style={{ padding: '0.85rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -2072,6 +2132,84 @@ function App() {
                 </div>
               </div>
 
+              <div className="table-container" style={{ padding: '1.5rem', marginBottom: '0', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <h3 style={{ marginBottom: '0', fontSize: '1.1rem', fontWeight: '600' }}>🤖 AI 對帳文案生成</h3>
+                {(() => {
+                  const targetMember = data.members.find(m => m.id === settingsAiMember) || data.members[0];
+                  if (!targetMember) return <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>請先建立成員。</p>;
+                  const summary = getMemberSummary(targetMember);
+                  if (!summary) return <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>無法取得該成員的帳務摘要。</p>;
+                  const aiData = aiReminders[targetMember.id] || { style: 'friendly', loading: false };
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <div className="form-group">
+                        <label style={{ fontWeight: '500' }}>選擇成員</label>
+                        <select className="form-control" value={settingsAiMember} onChange={e => setSettingsAiMember(e.target.value)}>
+                          {data.members.map(m => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <select className="ai-tone-select" value={aiData.style || 'friendly'}
+                          onChange={(e) => setAiReminders(prev => ({
+                            ...prev,
+                            [targetMember.id]: { ...prev[targetMember.id], style: e.target.value }
+                          }))}
+                        >
+                          <option value="friendly">💡 溫柔幽默</option>
+                          <option value="professional">👔 專業商務</option>
+                          <option value="pirate">🏴‍☠️ 狂野海盜</option>
+                          <option value="poetic">📜 文青詩意</option>
+                          <option value="urgent">⚡️ 急切催繳</option>
+                        </select>
+                        <button className="btn btn-secondary ai-sparkle-btn" disabled={aiData.loading}
+                          onClick={() => handleGenerateAIReminder(targetMember, summary, aiData.style || 'friendly')}
+                        >
+                          {aiData.loading ? '生成中...' : '✨ AI 生成'}
+                        </button>
+                        {aiData.text && (
+                          <button className="btn btn-secondary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem' }}
+                            onClick={() => copyReminder(targetMember, summary)}
+                          >
+                            📋 複製文案
+                          </button>
+                        )}
+                      </div>
+                      <div className="line-preview-bubble" style={{
+                        background: aiData.text ? 'rgba(167, 139, 250, 0.06)' : 'rgba(16, 185, 129, 0.06)',
+                        color: '#f8fafc', padding: '0.75rem 0.85rem', borderRadius: '12px',
+                        borderTopRightRadius: '2px', fontSize: '0.78rem', whiteSpace: 'pre-wrap',
+                        fontFamily: 'monospace', lineHeight: '1.45', minHeight: '60px',
+                        maxHeight: '200px', overflowY: 'auto', textAlign: 'left',
+                        border: aiData.text ? '1px solid rgba(167, 139, 250, 0.25)' : '1px solid rgba(16, 185, 129, 0.2)'
+                      }}>
+                        {aiData.loading ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#a78bfa' }}>
+                            <div className="ai-typing-indicator" style={{ padding: 0 }}>
+                              <span className="ai-typing-dot" style={{ backgroundColor: '#a78bfa' }}></span>
+                              <span className="ai-typing-dot" style={{ backgroundColor: '#a78bfa' }}></span>
+                              <span className="ai-typing-dot" style={{ backgroundColor: '#a78bfa' }}></span>
+                            </div>
+                            AI 正在為 {targetMember.name} 精心撰寫對帳文案中...
+                          </div>
+                        ) : aiData.text ? aiData.text : generateDetailedReminder(targetMember, summary)}
+                      </div>
+                      {aiData.text && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                          <span>✨ 由 Google AI Studio (gemini-3.1-flash-lite) 生成</span>
+                          <button style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', padding: 0 }}
+                            onClick={() => setAiReminders(prev => { const u = { ...prev }; delete u[targetMember.id]; return u; })}
+                          >
+                            重設為預設模板
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
               <div className="table-container recovery-console">
                 <div className="recovery-header">
                   <div>
@@ -2437,6 +2575,72 @@ function App() {
                   請選擇左側月份載入歷史對帳報告。
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* AI Assistant Tab */}
+        {activeTab === 'ai-assistant' && (
+          <div className="ai-assistant-container">
+            <div className="ai-chat-header">
+              <div className="ai-chat-header-title">
+                <span style={{ fontSize: '1.5rem' }}>✨</span>
+                <div>
+                  <h2>AI 帳務助理</h2>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    結合 RAG 向量搜尋與智能 Tool Calling 對話查帳
+                  </span>
+                </div>
+              </div>
+              <div className="ai-status-badge">
+                <span className="ai-typing-dot" style={{ width: '8px', height: '8px', background: '#34d399', opacity: 1, animation: 'none' }}></span>
+                Google AI Studio 已啟用
+              </div>
+            </div>
+
+            <div className="ai-messages-area" id="ai-messages-container">
+              {aiMessages.map((msg, i) => (
+                <div key={i} className={`ai-message ${msg.role === 'user' ? 'user' : msg.role === 'system' ? 'system-info' : 'assistant'}`}>
+                  {msg.tool_calls && msg.tool_calls.map((t, idx) => (
+                    <div key={idx} className="ai-message-tool-badge">
+                      🛠️ 呼叫工具: {t.function.name}
+                    </div>
+                  ))}
+                  {msg.content}
+                </div>
+              ))}
+              {aiLoading && (
+                <div className="ai-message assistant" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div className="ai-typing-indicator">
+                    <span className="ai-typing-dot"></span>
+                    <span className="ai-typing-dot"></span>
+                    <span className="ai-typing-dot"></span>
+                  </div>
+                  <span>助理正在思考並查詢資料庫中...</span>
+                </div>
+              )}
+            </div>
+
+            <div className="ai-input-area">
+              <div className="ai-chat-suggestions">
+                <span className="ai-suggestion-chip" onClick={() => setAiInput("有哪些會計警告或異常嗎？")}>🔍 檢查會計警告</span>
+                <span className="ai-suggestion-chip" onClick={() => setAiInput("系統當前帳務的整體概況為何？")}>📊 系統整體概況</span>
+                <span className="ai-suggestion-chip" onClick={() => setAiInput("這個月誰還沒有結清帳款？")}>💸 誰還沒繳錢</span>
+                <span className="ai-suggestion-chip" onClick={() => setAiInput("查詢 Member Beta 的歷史付款紀錄")}>🕒 Beta 歷史紀錄</span>
+              </div>
+              <form className="ai-input-form" onSubmit={handleSendChatMessage}>
+                <input
+                  type="text"
+                  className="ai-chat-input"
+                  placeholder="問我任何關於帳務的問題，例如: 'Beta 以前繳了多少錢？'..."
+                  value={aiInput}
+                  onChange={(e) => setAiInput(e.target.value)}
+                  disabled={aiLoading}
+                />
+                <button type="submit" className="ai-chat-send-btn" disabled={aiLoading || !aiInput.trim()}>
+                  傳送 ✨
+                </button>
+              </form>
             </div>
           </div>
         )}

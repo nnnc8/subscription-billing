@@ -11,6 +11,7 @@ The project is intentionally narrow: it is not positioned as a public SaaS produ
 - Google OAuth login with allowlisted accounts and signed HttpOnly session cookies.
 - Data model for members, platforms, subscriptions, payments, temporary charges, monthly history, and ledger events.
 - Accounting checks for duplicate payments, temporary charges, archived entities, close readiness, and monthly rollover.
+- GenAI capabilities: AI billing reminders with multiple tones, and an interactive AI accounting assistant utilizing function calling and RAG (via Google Gemini).
 - Verification workflow with `pnpm run verify`.
 
 ## Why It Matters
@@ -22,6 +23,7 @@ The original workflow was spreadsheet-like: member records, platform costs, paym
 - `README.md` for setup, privacy boundary, and verification.
 - `server.cjs` for API routes, auth protection, backups, and monthly close flow.
 - `lib/accounting.cjs` for accounting checks and ledger logic.
+- `lib/ai.cjs`, `lib/ai-assistant.cjs`, `lib/ai-reminder.cjs`, `lib/rag.cjs` for GenAI architecture, vector search, and function calling.
 - `scripts/test-auth.cjs` for Google OAuth and API protection tests.
 - `verify_accounting.cjs` and `verify_rollover.py` for accounting and monthly rollover validation.
 

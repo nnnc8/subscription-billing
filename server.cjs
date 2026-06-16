@@ -34,8 +34,14 @@ const {
     isTransactionVoided,
     normalizeDatabaseRelations,
     previousMonthString,
-    resolveMember
+    resolveMember,
+    isSubActiveInMonth,
+    getPlatformPriceForMonth,
+    isEntityBillableInMonth
 } = require('./lib/accounting.cjs');
+const { generateAIReminder } = require('./lib/ai-reminder.cjs');
+const { handleAssistantChat } = require('./lib/ai-assistant.cjs');
+const { invalidateRAGIndex, queryRAG } = require('./lib/rag.cjs');
 
 loadLocalEnv({ cwd: __dirname });
 
@@ -416,6 +422,7 @@ function writeAndSend(res, db, extra = {}, event = null) {
     if (!writeDB(db)) {
         return res.status(500).json({ error: "資料寫入失敗，已停止本次操作" });
     }
+    invalidateRAGIndex();
     return sendDB(res, db, extra);
 }
 
@@ -1223,6 +1230,165 @@ app.get('/api/ledger', (req, res) => {
         success: true,
         ledger: getLedgerSummary(db)
     });
+});
+
+// Helper to get displayName in server
+function getSubscriptionDisplayName(sub) {
+    if (sub.customName) {
+        return `${sub.platformName} (${sub.customName})`;
+    }
+    return sub.platformName;
+}
+
+// 11. AI Routes
+app.post('/api/ai/generate-reminder', async (req, res) => {
+    const { memberId, style } = req.body;
+    if (!memberId) {
+        return res.status(400).json({ error: '缺少 memberId 參數' });
+    }
+
+    const db = readDB();
+    if (!db) {
+        return res.status(500).json({ error: '無法讀取資料庫' });
+    }
+
+    try {
+        const member = db.members.find(m => m.id === memberId);
+        if (!member) {
+            return res.status(404).json({ error: '找不到成員' });
+        }
+
+        const balances = calculateCurrentMonthBalances(db);
+        const balance = balances.find(b => isMemberRecord(b, member));
+        if (!balance) {
+            return res.status(400).json({ error: '找不到該成員的當月帳務摘要' });
+        }
+
+        // Map balance properties to summary format expected by generateOpenAIReminder
+        const summary = {
+            outstanding: balance.endingBalance,
+            monthlyFee: balance.subscriptionFee,
+            tempCharges: balance.tempCharge,
+            paid: balance.paid
+        };
+
+        // Generate activeSubsText similar to the client helper
+        const memberSubs = db.subscriptions.filter(s => {
+            return (s.memberId && s.memberId === member.id) || s.memberName === member.name;
+        });
+        const activeSubsText = [];
+        
+        if (isEntityBillableInMonth(member, db.currentMonth) && member.customFee !== null && member.customFee !== "") {
+            activeSubsText.push(`  • 自訂費用小計: $${member.customFee}`);
+        } else {
+            memberSubs.forEach(sub => {
+                const isSubActive = isSubActiveInMonth(sub, db.currentMonth);
+                const platform = db.platforms.find(p => (sub.platformId && p.id === sub.platformId) || p.name === sub.platformName);
+                const isPlatformBillable = platform ? isEntityBillableInMonth(platform, db.currentMonth) : false;
+                const isMemberBillable = isEntityBillableInMonth(member, db.currentMonth);
+
+                if (isSubActive && isPlatformBillable && isMemberBillable) {
+                    const price = platform ? getPlatformPriceForMonth(db, platform, db.currentMonth) : 0;
+                    activeSubsText.push(`  • ${getSubscriptionDisplayName(sub)}: $${price}`);
+                }
+            });
+        }
+
+        if (activeSubsText.length === 0) {
+            activeSubsText.push("  • 本期無訂閱項目");
+        }
+
+        const result = await generateAIReminder({
+            member,
+            summary,
+            activeSubsText,
+            bankInfo: db.bankInfo || '',
+            currentMonth: db.currentMonth || '',
+            style: style || 'friendly'
+        });
+
+        res.json({
+            success: true,
+            text: result.text,
+            isAI: result.isAI,
+            error: result.error
+        });
+    } catch (err) {
+        console.error('Error generating reminder route:', err);
+        res.status(500).json({ error: err.message || '生成催帳訊息失敗' });
+    }
+});
+
+app.post('/api/ai/chat', async (req, res) => {
+    const { message, history } = req.body;
+    if (!message) {
+        return res.status(400).json({ error: '缺少 message 參數' });
+    }
+
+    const db = readDB();
+    if (!db) {
+        return res.status(500).json({ error: '無法讀取資料庫' });
+    }
+
+    try {
+        const result = await handleAssistantChat(db, message, history || []);
+        res.json({
+            success: true,
+            reply: result.reply,
+            history: result.history
+        });
+    } catch (err) {
+        console.error('Error in chat route:', err);
+        res.status(500).json({ error: err.message || 'AI 助理對話失敗' });
+    }
+});
+
+app.post('/api/ai/rag-search', async (req, res) => {
+    const { query, topK } = req.body;
+    if (!query) {
+        return res.status(400).json({ error: '缺少 query 參數' });
+    }
+
+    const db = readDB();
+    if (!db) {
+        return res.status(500).json({ error: '無法讀取資料庫' });
+    }
+
+    try {
+        const results = await queryRAG(db, query, topK || 5);
+        res.json({
+            success: true,
+            results: results
+        });
+    } catch (err) {
+        console.error('Error in RAG search route:', err);
+        res.status(500).json({ error: err.message || 'RAG 搜索失敗' });
+    }
+});
+
+app.post('/api/ai/chat-legacy', async (req, res) => {
+    const { message, history } = req.body;
+    if (!message) {
+        return res.status(400).json({ error: '缺少 message 參數' });
+    }
+
+    const db = readDB();
+    if (!db) {
+        return res.status(500).json({ error: '無法讀取資料庫' });
+    }
+
+    try {
+        const result = await handleAssistantChat(db, message, history || []);
+        res.json({
+            success: true,
+            reply: result.reply,
+            history: result.history,
+            isLegacy: true
+        });
+    } catch (err) {
+        console.error('Error in legacy chat route:', err);
+        res.status(500).json({ error: err.message || 'AI 助理對話失敗' });
+    }
 });
 
 // Redirect all other queries to React SPA index.html in production
