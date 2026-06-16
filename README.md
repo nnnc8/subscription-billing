@@ -8,7 +8,7 @@
 **Single-operator subscription billing console** — turn spreadsheet reconciliation into an auditable, AI-assisted web operations tool.
 
 [![Verify](https://github.com/nnnc8/subscription-billing/actions/workflows/verify.yml/badge.svg)](https://github.com/nnnc8/subscription-billing/actions/workflows/verify.yml)
-[![Node](https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![Node](https://img.shields.io/badge/node-22%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![React](https://img.shields.io/badge/react-19-61DAFB?logo=react&logoColor=white)](https://react.dev)
 [![Express](https://img.shields.io/badge/express-5-000000?logo=express&logoColor=white)](https://expressjs.com)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -54,11 +54,11 @@
 
 ```
 Frontend         React 19  ·  Vite 8  ·  CSS (custom properties)
-Backend          Express 5  ·  Node 20+
+Backend          Express 5  ·  Node 22+
 Auth             Google OAuth 2.0  ·  Signed HttpOnly cookies
 AI               Google Gemini (AI Studio)  ·  In-memory vector store
 Data             JSON file persistence  ·  50-backup rotation
-CI               GitHub Actions  ·  Multi-Node matrix (20, 22, 24)
+CI               GitHub Actions  ·  Multi-Node matrix (22, 24)
 Deployment       Docker  ·  Railway-ready  ·  macOS LaunchAgent
 ```
 
@@ -139,7 +139,7 @@ sequenceDiagram
 
 ### Prerequisites
 
-- Node.js 20+ and pnpm 11+
+- Node.js 22+ and pnpm 11+
 - A Google Cloud OAuth client (for login)
 
 ### 1. Clone and install
