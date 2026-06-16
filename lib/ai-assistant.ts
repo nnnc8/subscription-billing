@@ -1,16 +1,24 @@
-const { isAIConfigured } = require('./ai.cjs');
-const { queryRAG } = require('./rag.cjs');
-const {
+import { isAIConfigured } from './ai.js';
+import { queryRAG } from './rag.js';
+import {
     calculateCurrentMonthBalances,
     findAccountingWarnings,
     getSystemSnapshot,
     getClosePreview,
     isMemberRecord
-} = require('./accounting.cjs');
+} from './accounting.js';
+import type { Database } from '../src/types/billing.js';
 
-const GEMINI_API_KEY = process.env.GOOGLE_GEMINI_API_KEY || '';
+const GEMINI_API_KEY = '***REMOVED***';
 
-const tools = [
+const tools: Array<{
+    type: string
+    function: {
+        name: string
+        description: string
+        parameters: Record<string, unknown>
+    }
+}> = [
     {
         type: 'function',
         function: {
@@ -96,11 +104,25 @@ const tools = [
     }
 ];
 
-/**
- * Converts Gemini's FunctionDeclaration format (no 'type' wrapping) to
- * the nested format expected by the Gemini API 'tools' field.
- */
-function buildGeminiTools() {
+interface AssistantMessage {
+    role: string
+    content?: string
+    tool_calls?: Array<{
+        id?: string
+        type?: string
+        function: { name: string; arguments: string }
+        _thoughtSignature?: string | null
+    }>
+    name?: string
+    tool_call_id?: string
+}
+
+interface ChatResult {
+    reply: string
+    history: AssistantMessage[]
+}
+
+function buildGeminiTools(): Array<{ functionDeclarations: Array<Record<string, unknown>> }> {
     const declarations = tools.map(t => ({
         name: t.function.name,
         description: t.function.description,
@@ -109,17 +131,13 @@ function buildGeminiTools() {
     return [{ functionDeclarations: declarations }];
 }
 
-/**
- * Converts OpenAI-format messages to Gemini API contents format,
- * specifically for the function-calling loop.
- */
-function convertToGeminiContents(messages) {
-    const contents = [];
-    let systemInstruction = null;
+function convertToGeminiContents(messages: AssistantMessage[]): { contents: Array<Record<string, unknown>>; systemInstruction: { parts: Array<{ text: string }> } | null } {
+    const contents: Array<Record<string, unknown>> = [];
+    let systemInstruction: { parts: Array<{ text: string }> } | null = null;
 
     for (const msg of messages) {
         if (msg.role === 'system') {
-            systemInstruction = { parts: [{ text: msg.content }] };
+            systemInstruction = { parts: [{ text: msg.content || '' }] };
             continue;
         }
 
@@ -132,7 +150,6 @@ function convertToGeminiContents(messages) {
         }
 
         if (msg.role === 'tool') {
-            // Gemini expects functionResponse parts for tool results
             contents.push({
                 role: 'function',
                 parts: [{
@@ -149,13 +166,13 @@ function convertToGeminiContents(messages) {
         }
 
         if (msg.role === 'assistant' || msg.role === 'model') {
-            const parts = [];
+            const parts: Array<Record<string, unknown>> = [];
             if (msg.content) {
                 parts.push({ text: msg.content });
             }
             if (msg.tool_calls) {
                 for (const tc of msg.tool_calls) {
-                    const part = {
+                    const part: Record<string, unknown> = {
                         functionCall: {
                             name: tc.function.name,
                             args: JSON.parse(tc.function.arguments || '{}')
@@ -190,16 +207,31 @@ function convertToGeminiContents(messages) {
     return { contents, systemInstruction };
 }
 
-/**
- * Converts Gemini's response content back to OpenAI-format assistant message.
- * Preserves thoughtSignature for function call loops.
- */
-function geminiResponseToAssistantMessage(candidate) {
+interface GeminiCandidate {
+    content: {
+        parts: Array<{
+            text?: string
+            functionCall?: {
+                id?: string
+                name: string
+                args: Record<string, unknown>
+                thoughtSignature?: string | null
+            }
+        }>
+    }
+    finishReason?: string
+}
+
+interface GeminiResponse {
+    candidates?: GeminiCandidate[]
+}
+
+function geminiResponseToAssistantMessage(candidate: GeminiCandidate): AssistantMessage {
     const parts = candidate.content.parts || [];
     const textParts = parts.filter(p => p.text);
     const content = textParts.map(p => p.text).join('\n') || null;
 
-    const toolCalls = [];
+    const toolCalls: AssistantMessage['tool_calls'] = [];
 
     for (const part of parts) {
         if (part.functionCall) {
@@ -215,21 +247,18 @@ function geminiResponseToAssistantMessage(candidate) {
         }
     }
 
-    const msg = { role: 'assistant' };
+    const msg: AssistantMessage = { role: 'assistant' };
     if (content !== null) msg.content = content;
     if (toolCalls.length > 0) msg.tool_calls = toolCalls;
     return msg;
 }
 
-/**
- * Calls Google AI Studio REST API with full function-calling support.
- */
-async function callGeminiWithTools(modelName, messages, geminiTools, temperature = 0.2) {
+async function callGeminiWithTools(modelName: string, messages: AssistantMessage[], geminiTools: ReturnType<typeof buildGeminiTools>, temperature = 0.2): Promise<AssistantMessage> {
     const { contents, systemInstruction } = convertToGeminiContents(messages);
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
 
-    const body = {
+    const body: Record<string, unknown> = {
         contents,
         tools: geminiTools,
         generationConfig: {
@@ -253,7 +282,7 @@ async function callGeminiWithTools(modelName, messages, geminiTools, temperature
         throw new Error(`Gemini API returned ${res.status}: ${errText}`);
     }
 
-    const data = await res.json();
+    const data = (await res.json()) as GeminiResponse;
     if (!data.candidates || data.candidates.length === 0) {
         throw new Error('No candidates returned from Gemini API');
     }
@@ -266,15 +295,12 @@ async function callGeminiWithTools(modelName, messages, geminiTools, temperature
     return geminiResponseToAssistantMessage(candidate);
 }
 
-/**
- * Executes a tool called by the model.
- */
-function executeTool(db, name, args) {
+function executeTool(db: Database, name: string, args: Record<string, string>): string {
     try {
         switch (name) {
             case 'get_member_balance': {
                 const balances = calculateCurrentMonthBalances(db);
-                const queryName = args.memberName?.trim().toLowerCase();
+                const queryName = (args.memberName || '').trim().toLowerCase();
                 const member = db.members.find(m =>
                     m.name.toLowerCase() === queryName ||
                     m.id.toLowerCase() === queryName ||
@@ -299,7 +325,7 @@ function executeTool(db, name, args) {
                 });
             }
             case 'get_member_history': {
-                const queryName = args.memberName?.trim().toLowerCase();
+                const queryName = (args.memberName || '').trim().toLowerCase();
                 const member = db.members.find(m =>
                     m.name.toLowerCase() === queryName ||
                     m.id.toLowerCase() === queryName ||
@@ -311,16 +337,16 @@ function executeTool(db, name, args) {
                 const nameKey = member.name;
                 const payments = (db.payments || []).filter(p => p.memberName === nameKey);
                 const tempCharges = (db.tempCharges || []).filter(t => t.memberName === nameKey);
-                const history = [];
+                const history: Array<Record<string, unknown>> = [];
                 (db.history || []).forEach(h => {
                     const bal = (h.balances || []).find(b => b.memberName === nameKey);
                     if (bal) {
                         history.push({
                             month: h.month,
-                            monthlyFee: bal.monthlyFee,
-                            tempCharges: bal.tempCharges,
+                            monthlyFee: bal.subscriptionFee,
+                            tempCharges: bal.tempCharge,
                             paid: bal.paid,
-                            outstanding: bal.outstanding
+                            outstanding: bal.endingBalance
                         });
                     }
                 });
@@ -332,7 +358,7 @@ function executeTool(db, name, args) {
                 });
             }
             case 'get_payment_records': {
-                const queryName = args.memberName?.trim().toLowerCase();
+                const queryName = (args.memberName || '').trim().toLowerCase();
                 let payments = db.payments || [];
                 if (queryName) {
                     payments = payments.filter(p => p.memberName.toLowerCase().includes(queryName));
@@ -356,18 +382,14 @@ function executeTool(db, name, args) {
         }
     } catch (err) {
         console.error(`Error executing tool ${name}:`, err);
-        return JSON.stringify({ error: `執行工具時發生錯誤: ${err.message}` });
+        return JSON.stringify({ error: `執行工具時發生錯誤: ${(err as Error).message}` });
     }
 }
 
-/**
- * Handles a conversation turn between the user and the assistant.
- * Uses direct Google AI Studio REST API with function calling.
- */
-async function handleAssistantChat(db, userMessage, history = []) {
+export async function handleAssistantChat(db: Database, userMessage: string, history: AssistantMessage[] = []): Promise<ChatResult> {
     if (!isAIConfigured()) {
         return {
-            reply: "⚠️ 系統未啟用 AI 功能。請設定環境變數以啟用 AI 帳務助理。",
+            reply: '⚠️ 系統未啟用 AI 功能。請設定環境變數以啟用 AI 帳務助理。',
             history: [...history, { role: 'user', content: userMessage }]
         };
     }
@@ -375,14 +397,13 @@ async function handleAssistantChat(db, userMessage, history = []) {
     const model = (process.env.AI_MODEL || 'gemini-3.1-flash-lite').replace(/^@vertex-ai\//, '').replace(/^google\//, '');
     const geminiTools = buildGeminiTools();
 
-    // 1. Run RAG to find relevant historical context
     console.log(`RAG query for: "${userMessage}"`);
     const ragResults = await queryRAG(db, userMessage, 5);
 
-    let ragSystemContent = "";
+    let ragSystemContent = '';
     if (ragResults.length > 0) {
-        ragSystemContent = "\n\n【從向量資料庫檢索到的相關帳務脈絡】（若回答歷史性或模糊性問題時，請參考以下資訊，但若工具回傳更新或更精準的資料，請以 Tools 為準）：\n" +
-            ragResults.map((r, i) => `${i+1}. [分數: ${r.score.toFixed(2)}] ${r.text}`).join('\n');
+        ragSystemContent = '\n\n【從向量資料庫檢索到的相關帳務脈絡】（若回答歷史性或模糊性問題時，請參考以下資訊，但若工具回傳更新或更精準的資料，請以 Tools 為準）：\n' +
+            ragResults.map((r, i) => `${i + 1}. [分數: ${r.score.toFixed(2)}] ${r.text}`).join('\n');
     }
 
     const systemMessage = `你是一個專業、親切的個人共享訂閱帳務理財助理。你的名字是「Antigravity 帳務小幫手」。
@@ -400,7 +421,7 @@ async function handleAssistantChat(db, userMessage, history = []) {
 - 如果你想查詢某個成員，但使用者只給了簡稱（如 "Alpha" 代替 "Member Alpha"），你依然可以直接將 "Alpha" 傳入 get_member_balance 等工具，工具會進行模糊比對。
 ${ragSystemContent}`;
 
-    const messages = [
+    const messages: AssistantMessage[] = [
         { role: 'system', content: systemMessage },
         ...history,
         { role: 'user', content: userMessage }
@@ -420,10 +441,12 @@ ${ragSystemContent}`;
                 console.log(`Model requested ${assistantMessage.tool_calls.length} tool calls.`);
                 for (const toolCall of assistantMessage.tool_calls) {
                     const functionName = toolCall.function.name;
-                    let functionArgs = {};
+                    let functionArgs: Record<string, string> = {};
                     try {
                         functionArgs = JSON.parse(toolCall.function.arguments || '{}');
-                    } catch (_) {}
+                    } catch {
+                        // ignore parse errors
+                    }
                     console.log(`Executing tool: ${functionName} with args:`, functionArgs);
                     const resultText = executeTool(db, functionName, functionArgs);
                     messages.push({
@@ -443,18 +466,14 @@ ${ragSystemContent}`;
         } catch (err) {
             console.error('Error during assistant completion loop:', err);
             return {
-                reply: `❌ 抱歉，在處理您的請求或執行工具呼叫時發生錯誤：${err.message}`,
+                reply: `❌ 抱歉，在處理您的請求或執行工具呼叫時發生錯誤：${(err as Error).message}`,
                 history: [...history, { role: 'user', content: userMessage }]
             };
         }
     }
 
     return {
-        reply: "⚠️ 助理執行工具呼叫的次數過多，已達到安全限制。請試著簡化您的提問。",
+        reply: '⚠️ 助理執行工具呼叫的次數過多，已達到安全限制。請試著簡化您的提問。',
         history: [...history, { role: 'user', content: userMessage }]
     };
 }
-
-module.exports = {
-    handleAssistantChat
-};
