@@ -1,70 +1,148 @@
-# Subscription Billing Console
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://capsule-render.vercel.app/api?type=waving&color=0:667eea,100:764ba2&height=200&section=header&text=Subscription%20Billing%20Console&fontSize=42&fontColor=fff&animation=fadeIn">
+  <img alt="banner" src="https://capsule-render.vercel.app/api?type=waving&color=0:667eea,100:764ba2&height=200&section=header&text=Subscription%20Billing%20Console&fontSize=42&fontColor=fff&animation=fadeIn" width="100%">
+</picture>
 
-Single-operator subscription billing console for turning spreadsheet-based reconciliation into an auditable internal operations tool.
+<div align="center">
 
-This project is a portfolio prototype, not a public SaaS product. I built it around a narrow personal workflow so I could practice the full cycle of requirements definition, data modeling, authentication, API design, accounting checks, and regression verification.
+**Single-operator subscription billing console** — turn spreadsheet reconciliation into an auditable, AI-assisted web operations tool.
 
-## What It Solves
+[![Verify](https://github.com/nnnc8/subscription-billing/actions/workflows/verify.yml/badge.svg)](https://github.com/nnnc8/subscription-billing/actions/workflows/verify.yml)
+[![Node](https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![React](https://img.shields.io/badge/react-19-61DAFB?logo=react&logoColor=white)](https://react.dev)
+[![Express](https://img.shields.io/badge/express-5-000000?logo=express&logoColor=white)](https://expressjs.com)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](.github/PULL_REQUEST_TEMPLATE.md)
 
-Small subscription-based operations often start in Excel: members, platforms, payments, temporary charges, monthly closing, and exceptions live in separate sheets or notes. That makes it hard to answer simple operational questions:
+</div>
 
-- Which members still have unpaid balances?
-- Did someone enter the same payment twice?
-- Which subscriptions should roll into the next month?
-- Can historical records still be traced after members or platforms are archived?
-- Did a code change break login, data boundaries, or accounting rules?
+---
 
-Subscription Billing Console converts those spreadsheet-like steps into a web console with protected API routes, demo data, accounting warnings, a monthly close workflow, and verification scripts.
+## Table of Contents
 
-## Highlights
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [AI Capabilities](#ai-capabilities)
+- [API Reference](#api-reference)
+- [Project Structure](#project-structure)
+- [Verification & Testing](#verification--testing)
+- [Deployment](#deployment)
+- [Contributing](#contributing)
+- [License](#license)
 
-- **Operations data model**: members, platforms, subscriptions, payments, temporary charges, monthly history, and ledger events.
-- **Accounting checks**: duplicate payment detection, temporary charge checks, close-readiness preview, archived member/platform handling, and rollover validation.
-- **Tamper-evident ledger summary**: important writes append hash-linked ledger events and expose a `GET /api/ledger` audit view.
-- **Google account login**: OAuth login with allowlisted emails, signed HttpOnly session cookies, and protected `/api/*` routes.
-- **Privacy boundary**: real `.env`, `database.json`, backups, and handoff notes are ignored by Git; tracked demo data is sanitized.
-- **Regression verification**: `pnpm run verify` checks authentication, API protection, Git privacy, accounting invariants, rollover behavior, and portability.
-- **Generative AI Capabilities**: Smart billing reminder generation with custom tones (pirate, poetic, professional, friendly, urgent), and an interactive AI accounting assistant utilizing function calling and RAG.
+---
+
+## Features
+
+| Area | Capabilities |
+|------|-------------|
+| **📊 Billing Dashboard** | Member cards with real-time balance, subscription fee breakdowns, payment tracking, temporary charges |
+| **🔒 Authentication** | Google OAuth login with allowlisted emails, signed HttpOnly session cookies, 7-day expiry |
+| **📋 Subscriptions** | Per-member subscription assignments, split/fixed billing modes, archive with data retention |
+| **💰 Payment Ops** | Record payments & temp charges, duplicate detection, void transaction history |
+| **📅 Monthly Close** | Close-readiness preview, balance rollover, history sealing, tamper-evident ledger |
+| **🤖 AI Accounting Assistant** | Natural-language querying with function calling and RAG (Retrieval-Augmented Generation) |
+| **✍️ AI Reminders** | Generate billing reminders in 5 tone styles via LLM, with automatic template fallback |
+| **📦 Backup & Restore** | Automatic pre-write backups, backup inventory with restore-impact preview |
+| **🕵️ Audit Trail** | Hash-linked ledger events, accounting warnings, system snapshot fingerprints |
+
+---
 
 ## Tech Stack
 
-- React 19
-- Vite
-- Express 5
-- Google OAuth
-- Node.js 20+
-- GitHub Actions
-- pnpm
-- **AI Integration**: Google Gemini (via AI Studio / Vertex AI), In-memory RAG, and tool calling.
+```
+Frontend         React 19  ·  Vite 8  ·  CSS (custom properties)
+Backend          Express 5  ·  Node 20+
+Auth             Google OAuth 2.0  ·  Signed HttpOnly cookies
+AI               Google Gemini (AI Studio)  ·  In-memory vector store
+Data             JSON file persistence  ·  50-backup rotation
+CI               GitHub Actions  ·  Multi-Node matrix (20, 22, 24)
+Deployment       Docker  ·  Railway-ready  ·  macOS LaunchAgent
+```
 
-## Demo Data And Privacy
+---
 
-The repository stores code and sanitized demo data only.
+## Architecture
 
-Tracked demo and example files:
+```mermaid
+graph TB
+    subgraph Client
+        React["React SPA (Vite)"]
+    end
 
-- `fixtures/demo-database.json`
-- `database.example.json`
-- `.env.example`
+    subgraph Server["Express 5 API Server"]
+        Auth["Auth Middleware<br/>Google OAuth + Cookies"]
+        API["API Routes<br/>/api/*"]
+        Acc["Accounting Engine<br/>lib/accounting.cjs"]
+        AI["AI Layer<br/>lib/ai.cjs"]
+        RAG["RAG Pipeline<br/>lib/rag.cjs"]
+        Remind["Reminder Engine<br/>lib/ai-reminder.cjs"]
+        Assistant["AI Assistant<br/>lib/ai-assistant.cjs"]
+    end
 
-Ignored live files:
+    subgraph Storage
+        DB["database.json<br/>Authoritative state"]
+        Backups["backups/*.json<br/>Pre-write snapshots"]
+        Vector["In-memory Vector Store<br/>Cosine similarity"]
+    end
 
-- `.env`
-- `database.json`
-- `backups/*.json`
-- `session_handoff.md`
-- `data/`
+    subgraph External
+        Google["Google OAuth"]
+        Gemini["Gemini API<br/>(generativelanguage.googleapis.com)"]
+    end
 
-When `database.json` is missing, the server bootstraps a disposable demo database from `fixtures/demo-database.json`. Real billing data should stay in an ignored local `database.json` or in a private deployment volume such as `/data/database.json`.
+    Client -->|HTTP / JSON| Auth
+    Auth --> API
+    API --> Acc
+    API --> Remind
+    API --> Assistant
+    Acc --> DB
+    DB -.->|backup| Backups
+    AI --> Gemini
+    Remind --> AI
+    Assistant --> AI
+    Assistant --> RAG
+    RAG --> Vector
+    DB -.->|rebuild index| Vector
+    Client -->|redirect| Google
+    Google -->|callback| Auth
+```
 
-## Local Setup
+**Request flow for an AI query:**
 
-Requirements:
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as Frontend
+    participant S as Server
+    participant R as RAG
+    participant G as Gemini API
 
-- Node.js 20 or newer
-- pnpm 11.1.2, or npm as a fallback
+    U->>F: "How much does Beta owe?"
+    F->>S: POST /api/ai/chat
+    S->>R: queryRAG("Beta owe")
+    R-->>S: relevant history chunks
+    S->>G: system + context + tools
+    G-->>S: functionCall(get_member_balance)
+    S->>S: executeTool("get_member_balance")
+    S->>G: functionResponse + loop
+    G-->>S: text reply
+    S-->>F: { reply, history }
+    F-->>U: Display answer
+```
 
-Install and build:
+---
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 20+ and pnpm 11+
+- A Google Cloud OAuth client (for login)
+
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/nnnc8/subscription-billing.git
@@ -73,153 +151,261 @@ pnpm install
 pnpm run build
 ```
 
-Create a local `.env` file from `.env.example`. This file is ignored by Git.
+### 2. Configure environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your Google OAuth credentials (see [Google Cloud Console](https://console.cloud.google.com/apis/credentials)):
 
 ```env
 PORT=3000
 HOST=127.0.0.1
-DATA_DIR=.
-APP_SESSION_SECRET=replace-with-at-least-32-random-characters
-GOOGLE_CLIENT_ID=your-google-oauth-client-id
-GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
-GOOGLE_ALLOWED_EMAILS=your-account@example.com
+APP_SESSION_SECRET=<32+ random characters>
+GOOGLE_CLIENT_ID=<your-client-id>
+GOOGLE_CLIENT_SECRET=<your-client-secret>
+GOOGLE_ALLOWED_EMAILS=<your-email>
 ```
 
-In Google Cloud Console, create an OAuth client with application type `Web application` and add this authorized redirect URI:
+Add this authorized redirect URI in your OAuth client:
 
-```text
+```
 http://localhost:3000/api/auth/callback
 ```
 
-Start the app:
+### 3. Start
 
 ```bash
 pnpm run start
 ```
 
-Open:
+Open [http://localhost:3000](http://localhost:3000) and sign in with your Google account.
 
-```text
-http://localhost:3000
-```
-
-## Verification
-
-Run the same checks used for local review and CI:
+### Docker (alternative)
 
 ```bash
+docker compose up --build
+```
+
+Set the same environment variables via `.env` or `docker compose run -e`.
+
+---
+
+## AI Capabilities
+
+### ✍️ AI Billing Reminders
+
+Generate personalized billing messages with a single click. Supports five tone styles:
+
+| Style | Description |
+|-------|-------------|
+| 💡 溫柔幽默 | Friendly, uses stickers and casual nicknames |
+| 👔 專業商務 | Polite, professional, structured correspondence |
+| 🏴‍☠️ 狂野海盜 | Pirate-themed with flair and attitude |
+| 📜 文青詩意 | Poetic, philosophical, aesthetically warm |
+| ⚡️ 急切催繳 | Urgent but polite, emphasizing prompt payment |
+
+The feature **gracefully degrades** to a local template engine if the API is unreachable — zero disruption to the operator's workflow.
+
+### 🤖 AI Accounting Assistant
+
+An interactive chat assistant that answers natural-language billing questions:
+
+- **Function calling**: autonomously invokes tools (`get_member_balance`, `get_member_history`, `get_payment_records`, `get_accounting_warnings`, `get_system_snapshot`, `get_close_preview`) to retrieve live data
+- **Multi-turn reasoning**: calls multiple tools in sequence, feeding results back to the LLM for coherent answers
+- **Context awareness**: maintains conversation history across turns
+
+### 🔍 RAG Pipeline
+
+Custom in-memory vector search indexes ledger events, history summaries, payments, and platform data:
+
+1. **Indexing** — text chunks are embedded via `gemini-embedding-2` on write operations
+2. **Retrieval** — user queries are embedded and matched via cosine similarity
+3. **Generation** — top chunks are injected into the LLM prompt for grounded answers
+
+This enables queries like *"How much did Beta pay in past months?"* without bloating the context window.
+
+---
+
+## API Reference
+
+### Auth
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/auth/login` | Redirect to Google OAuth |
+| `GET` | `/api/auth/callback` | OAuth callback handler |
+| `POST` | `/api/auth/logout` | Clear session cookie |
+| `GET` | `/api/auth/session` | Session status |
+
+### Data Operations
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/health` | Health check |
+| `GET` | `/api/data` | Full database state with audit |
+| `POST` | `/api/payment` | Record a payment |
+| `DELETE` | `/api/payment/:id` | Void a payment |
+| `POST` | `/api/temp-charge` | Add a temporary charge |
+| `DELETE` | `/api/temp-charge/:id` | Void a charge |
+| `POST` | `/api/update-prices` | Update platform prices |
+| `POST` | `/api/update-members` | Update member config |
+| `POST` | `/api/update-subscriptions` | Update subscription assignments |
+| `POST` | `/api/update-bank` | Update bank info & reminder style |
+| `POST` | `/api/update-config-bundle` | Atomic config update |
+| `POST` | `/api/member` | Add new member |
+| `DELETE` | `/api/member/:id` | Archive member |
+| `POST` | `/api/platform` | Add new platform |
+| `DELETE` | `/api/platform/:id` | Archive platform |
+| `POST` | `/api/settle` | Monthly settlement & rollover |
+| `GET` | `/api/close-preview` | Close-readiness check |
+
+### Backup
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/backups` | List all backups |
+| `GET` | `/api/backups/:filename/preview` | Preview backup impact |
+| `POST` | `/api/backups/restore` | Restore from backup |
+| `POST` | `/api/backups/create` | Create manual backup |
+| `DELETE` | `/api/backups/:filename` | Delete backup |
+
+### AI
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/ai/generate-reminder` | Generate AI billing reminder |
+| `POST` | `/api/ai/chat` | AI assistant conversation |
+| `POST` | `/api/ai/rag-search` | Raw RAG vector search |
+
+### Audit
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/audit` | Accounting warnings & ledger summary |
+| `GET` | `/api/ledger` | Hash-chain event log |
+
+> All `/api/*` routes except `/api/health` and `/api/auth/*` require a valid session cookie.
+
+---
+
+## Project Structure
+
+```
+subscription-billing/
+├── .github/
+│   ├── workflows/
+│   │   └── verify.yml              # CI: lint, test, build, Docker
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   └── ISSUE_TEMPLATE/
+│       ├── bug_report.md
+│       └── feature_request.md
+├── public/
+│   ├── favicon.svg
+│   └── icons.svg
+├── src/
+│   ├── main.jsx                    # React entry
+│   ├── App.jsx                     # Main application component
+│   ├── App.css
+│   └── index.css                   # Global styles & variables
+├── lib/                            # Server-side logic
+│   ├── accounting.cjs              # Core accounting engine
+│   ├── ai.cjs                      # Gemini API client
+│   ├── ai-reminder.cjs             # AI reminder generation
+│   ├── ai-assistant.cjs            # AI assistant with function calling
+│   ├── rag.cjs                     # RAG pipeline (index, embed, search)
+│   ├── auth.cjs                    # Session & OAuth state management
+│   ├── env.cjs                     # Environment loader
+│   └── google-oauth.cjs            # Google OAuth client
+├── scripts/
+│   ├── test-auth.cjs               # Auth & API protection tests
+│   ├── test-privacy.cjs            # Git privacy boundary tests
+│   ├── test-portability.cjs        # LaunchAgent portability tests
+│   └── install-launchagent.cjs     # macOS LaunchAgent installer
+├── fixtures/
+│   └── demo-database.json          # Demo data for first boot
+├── docs/
+│   └── recruiter-brief.md          # Short version for applications
+├── server.cjs                      # Express server entry
+├── vite.config.js
+├── eslint.config.js
+├── Dockerfile
+├── docker-compose.yml
+├── package.json
+└── README.md
+```
+
+---
+
+## Verification & Testing
+
+```bash
+# Full verification suite
 pnpm run verify
+
+# Linter
 pnpm run lint
+
+# Production build
 pnpm run build
 ```
 
 `pnpm run verify` runs:
 
-- Google auth and API protection tests
-- Git privacy checks
-- Accounting invariant checks
-- Monthly rollover checks
-- Portability checks for macOS LaunchAgent generation
+| Check | Description |
+|-------|-------------|
+| Google auth & API protection | Confirms OAuth flow and session enforcement |
+| Privacy boundary | Ensures no sensitive data in Git tracking |
+| Accounting invariants | Validates balance calculations, history seals, and period consistency |
+| Monthly rollover | Python script verifying rollover integrity |
+| Portability | macOS LaunchAgent generation correctness |
 
-For local sensitive-term scanning, put one private term per line in an ignored `.privacy-terms` file and run:
+---
 
-```bash
-PRIVACY_GREP_TERMS_FILE=.privacy-terms pnpm run verify
-```
+## Deployment
 
-## Auth Model
-
-- `GET /api/auth/login`
-- `GET /api/auth/callback`
-- `POST /api/auth/logout`
-- `GET /api/auth/session`
-- `GET /api/health`
-
-All other `/api/*` endpoints require a signed HttpOnly cookie. Sessions use `SameSite=Lax`, expire after 7 days, and set `Secure` automatically in production. Google OAuth tokens are only used during callback handling and are not stored in `database.json`.
-
-## Deployment Notes
-
-For Railway-style deployment, set these variables and attach a persistent volume mounted at `/data`:
+### Railway / Cloud
 
 ```env
 DATA_DIR=/data
 HOST=0.0.0.0
 PORT=3000
-APP_SESSION_SECRET=replace-with-at-least-32-random-characters
-GOOGLE_CLIENT_ID=your-google-oauth-client-id
-GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
-GOOGLE_ALLOWED_EMAILS=your-account@example.com
 NODE_ENV=production
+APP_SESSION_SECRET=<secret>
+GOOGLE_CLIENT_ID=<id>
+GOOGLE_CLIENT_SECRET=<secret>
+GOOGLE_ALLOWED_EMAILS=<email>
 ```
 
-In the Google OAuth client, add the deployment callback URL:
+Mount a persistent volume at `/data`. Add the deployment URL as an authorized redirect URI in Google Cloud Console.
 
-```text
-https://your-domain.example/api/auth/callback
-```
-
-Build command:
+### Docker
 
 ```bash
-pnpm run build
+docker compose up --build -d
 ```
 
-Start command:
+### macOS Service
 
 ```bash
-pnpm run start
+pnpm run launchd:install   # Install as background service
+pnpm run launchd:uninstall # Remove
 ```
 
-Optional:
+---
 
-```env
-ALLOWED_ORIGINS=https://your-domain.example
-COOKIE_SECURE=true
-```
+## Contributing
 
-## macOS LaunchAgent
+This is primarily a portfolio project, but issues and pull requests are welcome.
 
-After local `.env` exists:
+1. Check open [issues](https://github.com/nnnc8/subscription-billing/issues) for discussion before starting work
+2. Follow the [PR template](.github/PULL_REQUEST_TEMPLATE.md)
+3. Ensure `pnpm run verify && pnpm run lint && pnpm run build` passes
+4. Keep `.env`, `database.json`, and `backups/` out of Git
 
-```bash
-pnpm run launchd:install
-```
+---
 
-Remove it:
+## License
 
-```bash
-pnpm run launchd:uninstall
-```
-
-The tracked `com.nc8.subscription-billing.plist` is a template only. The install script generates a machine-specific plist in `~/Library/LaunchAgents`.
-
-## AI Features and Architecture
-
-This application showcases several advanced Generative AI and LLM integration patterns, optimized for robust production application:
-
-1. **AI-Powered Billing Reminders (Prompt Engineering & Fallbacks)**:
-   - Instead of static string templates, operators can use the **AI Generate** feature to customize billing messages using Google Gemini.
-   - Supports five tone styles: *Friendly & Humorous*, *Professional & Formal*, *Wild Pirate*, *Poetic/Aesthetic*, and *Politely Urgent*.
-   - Implements a strict fallback to local templates if the API key is missing or calls fail, ensuring zero disruption to the operator's checkout workflow.
-
-2. **AI Accounting Assistant (OpenAI Compatible Function Calling)**:
-   - Operators can converse with an interactive AI accountant in a premium chat window.
-   - Built with OpenAI-compatible tool calling. The assistant can autonomously request data via database search functions like `get_member_balance`, `get_member_history`, `get_payment_records`, `get_accounting_warnings`, and `get_system_snapshot`.
-   - Handles multi-turn function loops to calculate details and verify state before responding.
-
-3. **In-Memory RAG Pipeline (Retrieval-Augmented Generation)**:
-   - To query system logs, past months' balances, and historical ledger events without bloating the LLM context, we implement a custom in-memory vector indexing pipeline.
-   - Generates text chunks of ledger events, history summaries, payments, platform pricing, and active memberships.
-   - Rebuilds dynamically when writes occur and computes cosine similarity of query embeddings to inject the top matching historical context into the prompt, enabling the assistant to answer historical questions like *"How much did Beta pay in past months?"*.
-
-## Portfolio Framing
-
-For interviews, the important parts of this project are not the niche subscription workflow itself. The transferable parts are:
-
-- turning an informal spreadsheet process into structured data and API operations
-- designing exception checks before monthly close
-- protecting private operational data from public Git tracking
-- using OAuth and signed sessions to restrict access
-- writing repeatable verification for auth, accounting, privacy, and rollover behavior
-
-See [`docs/recruiter-brief.md`](docs/recruiter-brief.md) for a short version that can be shared in an application message.
+MIT © 2026. This project is released for demonstration and educational purposes.

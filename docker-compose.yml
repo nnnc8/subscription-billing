@@ -1,0 +1,24 @@
+services:
+  billing:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=3000
+      - DATA_DIR=/data
+      - APP_SESSION_SECRET
+      - GOOGLE_CLIENT_ID
+      - GOOGLE_CLIENT_SECRET
+      - GOOGLE_ALLOWED_EMAILS
+      - GOOGLE_REDIRECT_URI
+      - COOKIE_SECURE=true
+    volumes:
+      - billing_data:/data
+    restart: unless-stopped
+
+volumes:
+  billing_data:

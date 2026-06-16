@@ -9,12 +9,15 @@ env:
 
 jobs:
   verify:
+    strategy:
+      matrix:
+        node-version: [20, 22, 24]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: ${{ matrix.node-version }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11.1.2
@@ -22,3 +25,9 @@ jobs:
       - run: pnpm run verify
       - run: pnpm run lint
       - run: pnpm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --tag billing --file Dockerfile .
