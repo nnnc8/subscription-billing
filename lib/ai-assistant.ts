@@ -104,7 +104,7 @@ const tools: Array<{
     }
 ];
 
-interface AssistantMessage {
+export interface AssistantMessage {
     role: string
     content?: string
     tool_calls?: Array<{
@@ -117,7 +117,7 @@ interface AssistantMessage {
     tool_call_id?: string
 }
 
-interface ChatResult {
+export interface ChatResult {
     reply: string
     history: AssistantMessage[]
 }
@@ -207,17 +207,20 @@ function convertToGeminiContents(messages: AssistantMessage[]): { contents: Arra
     return { contents, systemInstruction };
 }
 
+interface GeminiPart {
+    text?: string
+    thoughtSignature?: string | null
+    functionCall?: {
+        id?: string
+        name: string
+        args: Record<string, unknown>
+        thoughtSignature?: string | null
+    }
+}
+
 interface GeminiCandidate {
     content: {
-        parts: Array<{
-            text?: string
-            functionCall?: {
-                id?: string
-                name: string
-                args: Record<string, unknown>
-                thoughtSignature?: string | null
-            }
-        }>
+        parts: GeminiPart[]
     }
     finishReason?: string
 }

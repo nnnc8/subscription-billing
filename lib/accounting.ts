@@ -97,7 +97,7 @@ export function isMemberRecord(record: { memberId?: string; memberName?: string 
     return record.memberName === member.name;
 }
 
-function isPlatformRecord(record: { platformId?: string; platformName?: string }, platform: { id?: string; name?: string }): boolean {
+export function isPlatformRecord(record: { platformId?: string; platformName?: string }, platform: { id?: string; name?: string }): boolean {
     if (!record || !platform) return false;
     if (record.platformId && platform.id) return record.platformId === platform.id;
     return record.platformName === platform.name;
@@ -125,21 +125,25 @@ function parseTimestamp(value: string | undefined | null): number | null {
     return Number.isFinite(ms) ? ms : null;
 }
 
+function getStr(obj: unknown, field: string): string | undefined {
+    return (obj as Record<string, unknown>)?.[field] as string | undefined;
+}
+
 export function findRecentDuplicateTransaction(transactions: (Payment | TempCharge)[], candidate: Payment | TempCharge | null | undefined, options: { type?: string; windowMs?: number } = {}): Payment | TempCharge | null {
     const type = options.type || 'payment';
     const windowMs = Number.isFinite(options.windowMs) ? options.windowMs! : 10 * 60 * 1000;
-    const candidateCreatedAt = parseTimestamp((candidate as Record<string, string>)?.createdAt);
+    const candidateCreatedAt = parseTimestamp(getStr(candidate, 'createdAt'));
     if (!candidate || candidateCreatedAt === null) return null;
 
     const candidateMemberKey = memberRecordKey(candidate);
     const candidateAmount = toNumber(candidate.amount, NaN);
     const candidateDate = candidate.date || '';
-    const candidateMethod = normalizeDuplicateText((candidate as Record<string, string>).method);
-    const candidateNote = normalizeDuplicateText((candidate as Record<string, string>).note);
-    const candidateDesc = normalizeDuplicateText((candidate as Record<string, string>).desc);
+    const candidateMethod = normalizeDuplicateText(getStr(candidate, 'method') || '');
+    const candidateNote = normalizeDuplicateText(getStr(candidate, 'note') || '');
+    const candidateDesc = normalizeDuplicateText(getStr(candidate, 'desc') || '');
 
     return activeTransactions(transactions).find(transaction => {
-        const existingCreatedAt = parseTimestamp((transaction as Record<string, string>).createdAt);
+        const existingCreatedAt = parseTimestamp(getStr(transaction, 'createdAt'));
         if (existingCreatedAt === null) return false;
         if (Math.abs(candidateCreatedAt - existingCreatedAt) > windowMs) return false;
         if (memberRecordKey(transaction) !== candidateMemberKey) return false;
@@ -147,11 +151,11 @@ export function findRecentDuplicateTransaction(transactions: (Payment | TempChar
         if ((transaction.date || '') !== candidateDate) return false;
 
         if (type === 'charge') {
-            return normalizeDuplicateText((transaction as Record<string, string>).desc) === candidateDesc;
+            return normalizeDuplicateText(getStr(transaction, 'desc') || '') === candidateDesc;
         }
 
-        return normalizeDuplicateText((transaction as Record<string, string>).method) === candidateMethod
-            && normalizeDuplicateText((transaction as Record<string, string>).note) === candidateNote;
+        return normalizeDuplicateText(getStr(transaction, 'method') || '') === candidateMethod
+            && normalizeDuplicateText(getStr(transaction, 'note') || '') === candidateNote;
     }) || null;
 }
 
@@ -170,7 +174,7 @@ export function isEntityBillableInMonth(entity: { archivedMonth?: string; status
 function isIntentionalAdditionalSeat(subscription: Subscription): boolean {
     return Boolean(
         subscription &&
-        (subscription.allowDuplicate === true || subscription.seatLabel || (subscription as Record<string, unknown>).seatRole === 'additional')
+        (subscription.allowDuplicate === true || subscription.seatLabel || (subscription as unknown as Record<string, unknown>).seatRole === 'additional')
     );
 }
 
@@ -292,10 +296,10 @@ export function normalizeDatabaseRelations(db: Database): Database {
     const normalizeMemberRecord = <T extends { memberId?: string; memberName?: string; id?: string; date?: string }>(record: T, index: number, prefix: string): T => {
         const member = record.memberId
             ? lookups.memberById.get(record.memberId)
-            : lookups.memberByName.get(record.memberName);
+            : (record.memberName ? lookups.memberByName.get(record.memberName) : undefined);
         return {
             ...record,
-            id: record.id || legacyId(prefix, `${record.memberName}_${record.date || index}`, index),
+            id: record.id || legacyId(prefix, `${record.memberName || ''}_${record.date || index}`, index),
             ...(member ? { memberId: member.id, memberName: record.memberName || member.name } : {})
         } as T;
     };
@@ -357,7 +361,7 @@ export function calculateMemberMonthlyFee(member: Member | null | undefined, db:
     if (!member || !db) return 0;
     if (!isEntityBillableInMonth(member, monthStr)) return 0;
 
-    if (member.customFee !== null && member.customFee !== undefined && member.customFee !== '') {
+    if (member.customFee != null) {
         return toNumber(member.customFee);
     }
 
@@ -418,7 +422,7 @@ export function getClosePreview(db: Database): ClosePreview {
     const historyIntegrity = getHistoryIntegrity(db);
     const nextMonth = nextMonthString(db.currentMonth);
 
-    const totals: { priorBalance: number; subscriptionFee: number; tempCharge: number; paid: number; endingBalance: number; receivable: number; unpaidMembers: number } = balances.reduce((acc, balance) => {
+    const totals = balances.reduce((acc, balance) => {
         acc.priorBalance += toNumber(balance.priorBalance);
         acc.subscriptionFee += toNumber(balance.subscriptionFee);
         acc.tempCharge += toNumber(balance.tempCharge);
@@ -443,20 +447,16 @@ export function getClosePreview(db: Database): ClosePreview {
     if (!nextMonth) {
         blockers.push({ code: 'invalid_current_month', title: '目前帳期格式錯誤', detail: `currentMonth=${db.currentMonth}` });
     }
-        criticalWarnings.forEach(warning => {
-            blockers.push({ code: warning.code, title: warning.title, detail: warning.detail });
+    criticalWarnings.forEach(warning => {
+        blockers.push({ code: warning.code, title: warning.title, detail: warning.detail });
     });
 
     return {
         ready: blockers.length === 0,
         currentMonth: db.currentMonth,
         nextMonth: nextMonth || '',
-        totals: {
-            subscriptionFee: totals.subscriptionFee,
-            paid: totals.paid,
-            receivable: totals.receivable,
-            unpaidMembers: totals.unpaidMembers
-        },
+        totals,
+        balances,
         checks: [
             {
                 id: 'audit',
@@ -484,7 +484,7 @@ export function getClosePreview(db: Database): ClosePreview {
             }
         ],
         blockers,
-        warnings,
+        warnings: warnings.map(w => ({ code: w.code, title: w.title, detail: w.detail }))
     };
 }
 
@@ -623,29 +623,53 @@ function getBusinessFingerprint(db: Database): string {
     }));
 }
 
-export function getSystemSnapshot(db: Database | null): SystemSnapshot & { ok?: boolean; fingerprint?: string } {
+export function getSystemSnapshot(db: Database | null): SystemSnapshot {
     if (!db) {
         return {
             ok: false,
-            version: '',
-            generatedAt: new Date().toISOString(),
+            fingerprint: '',
             currentMonth: '',
-            baseMonth: '',
-            members: 0,
-            platforms: 0,
-            subscriptions: 0,
-            activeSubscriptions: 0,
-            totalPayments: 0,
-            totalTempCharges: 0,
-            totalReceivable: 0,
-            paidThisMonth: 0,
-            unpaidMembers: 0,
-            historyMonths: 0,
+            generatedAt: new Date().toISOString(),
             health: {
                 status: 'risk',
-                warningsCount: 1,
-                sealedHistoryCount: 0,
-                ledgerIntegrity: false
+                label: '資料不可讀',
+                warningCount: 1,
+                criticalCount: 1,
+                ledgerOk: false
+            },
+            counts: {
+                members: 0,
+                activeMembers: 0,
+                archivedMembers: 0,
+                platforms: 0,
+                activePlatforms: 0,
+                archivedPlatforms: 0,
+                subscriptions: 0,
+                payments: 0,
+                paymentRecords: 0,
+                voidedPayments: 0,
+                tempCharges: 0,
+                tempChargeRecords: 0,
+                voidedTempCharges: 0,
+                history: 0,
+                ledger: 0
+            },
+            totals: {
+                subscriptionFee: 0,
+                paid: 0,
+                receivable: 0,
+                unpaidMembers: 0
+            },
+            history: {
+                count: 0,
+                latestMonth: null,
+                integrity: null
+            },
+            ledger: {
+                ok: false,
+                count: 0,
+                lastHash: '',
+                latest: null
             }
         };
     }
@@ -675,25 +699,43 @@ export function getSystemSnapshot(db: Database | null): SystemSnapshot & { ok?: 
     return {
         ok: status !== 'risk',
         fingerprint: getBusinessFingerprint(db),
-        version: '1.0',
-        generatedAt: new Date().toISOString(),
         currentMonth: db.currentMonth,
-        baseMonth: db.baseMonth || '',
-        members: (db.members || []).length,
-        platforms: (db.platforms || []).length,
-        subscriptions: (db.subscriptions || []).length,
-        activeSubscriptions: (db.subscriptions || []).length,
-        totalPayments: activePayments.length,
-        totalTempCharges: activeTempCharges.length,
-        totalReceivable: totals.receivable,
-        paidThisMonth: totals.paid,
-        unpaidMembers: totals.unpaidMembers,
-        historyMonths: history.length,
+        generatedAt: new Date().toISOString(),
         health: {
             status,
-            warningsCount: warnings.length,
-            sealedHistoryCount: historyIntegrity.sealedCount,
-            ledgerIntegrity: ledger.ok
+            label: status === 'clean' ? '乾淨可用' : status === 'warning' ? '可用但需確認' : '高風險',
+            warningCount: warnings.length,
+            criticalCount,
+            ledgerOk: ledger.ok
+        },
+        counts: {
+            members: (db.members || []).length,
+            activeMembers: activeMembers.length,
+            archivedMembers: archivedMembers.length,
+            platforms: (db.platforms || []).length,
+            activePlatforms: activePlatforms.length,
+            archivedPlatforms: archivedPlatforms.length,
+            subscriptions: (db.subscriptions || []).length,
+            payments: activePayments.length,
+            paymentRecords: (db.payments || []).length,
+            voidedPayments: voidedPayments.length,
+            tempCharges: activeTempCharges.length,
+            tempChargeRecords: (db.tempCharges || []).length,
+            voidedTempCharges: voidedTempCharges.length,
+            history: history.length,
+            ledger: ledger.count
+        },
+        totals,
+        history: {
+            count: history.length,
+            latestMonth: history.length ? history[history.length - 1].month : null,
+            integrity: historyIntegrity
+        },
+        ledger: {
+            ok: ledger.ok,
+            count: ledger.count,
+            lastHash: ledger.lastHash,
+            latest: ledger.latest || null
         }
     };
 }
@@ -801,7 +843,7 @@ export function findAccountingWarnings(db: Database | null, monthStr?: string): 
         if (!isFiniteNumber(priorBalance)) {
             addWarning(warnings, 'high', 'invalid_prior_balance', '成員期初餘額不是有效數字', `${member.name} 的 priorBalance=${member.priorBalance}`);
         }
-        if (member.customFee !== null && member.customFee !== undefined && member.customFee !== '' && !Number.isFinite(parseFloat(String(member.customFee)))) {
+        if (member.customFee != null && !Number.isFinite(parseFloat(String(member.customFee)))) {
             addWarning(warnings, 'high', 'invalid_custom_fee', '自訂月費不是有效數字', `${member.name} 的 customFee=${member.customFee}`);
         }
     });
@@ -922,7 +964,7 @@ export function findAccountingWarnings(db: Database | null, monthStr?: string): 
         if (amount < 0 && !isVoided) {
             addWarning(warnings, 'medium', 'negative_transaction_amount', '交易金額為負數', `${transaction.id || '(無 id)'} 金額=${transaction.amount}；若是沖銷，建議改用明確的調整類型。`);
         }
-        if (isVoided && !(transaction as Record<string, unknown>).voidedAt) {
+        if (isVoided && !transaction.voidedAt) {
             addWarning(warnings, 'medium', 'voided_transaction_missing_time', '作廢交易缺少時間戳', `${transaction.id || '(無 id)'} 已作廢但沒有 voidedAt。`);
         }
         if (transaction.memberId && !memberIds.has(transaction.memberId)) {

@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import { HistoryTab } from './components/HistoryTab';
+import { SubscriptionsTab } from './components/SubscriptionsTab';
+import { AiAssistantTab } from './components/AiAssistantTab';
 
 // Vite dev server has a proxy that forwards /api -> http://127.0.0.1:3000
 // so cookies are always same-origin regardless of dev vs. production.
@@ -1881,107 +1884,21 @@ function App() {
 
         {/* Subscriptions Tab */}
         {activeTab === 'subscriptions' && (
-          <>
-            {/* Quick allocation form */}
-            <div className="table-container" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
-              <h3 style={{ marginBottom: '1.25rem', fontSize: '1.1rem', fontWeight: '600' }}>建立名額配置</h3>
-              <form onSubmit={handleAddSubscription} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                <div className="form-group" style={{ flexGrow: 1, minWidth: '150px' }}>
-                  <label>選擇成員姓名</label>
-                  <select className="form-control" value={subName} onChange={(e) => setSubName(e.target.value)}>
-                    <option value="">-- 請選擇 --</option>
-                    {activeMembers.map(m => (
-                      <option key={m.id} value={m.name}>{m.name}</option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div className="form-group" style={{ flexGrow: 1, minWidth: '150px' }}>
-                  <label>訂閱平台</label>
-                  <select className="form-control" value={effectiveSubPlatform} onChange={(e) => setSubPlatform(e.target.value)}>
-                    {activePlatforms.map(p => (
-                      <option key={p.id} value={p.name}>{p.name}</option>
-                    ))}
-                    <option value="自訂">自訂月費項目</option>
-                  </select>
-                </div>
-
-                <div className="form-group" style={{ width: '150px' }}>
-                  <label>起算月份 (YYYY/MM)</label>
-                  <input type="text" className="form-control" placeholder="如 2026/05" value={subStart} onChange={(e) => setSubStart(e.target.value)} />
-                </div>
-
-                <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem 1.5rem' }}>寫入配置</button>
-              </form>
-            </div>
-
-            {/* Subscriptions allocations list */}
-            <div className="table-container">
-              <div className="table-wrapper">
-                <table>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '60px' }}>#</th>
-                      <th>姓名</th>
-                      <th>訂閱項目</th>
-                      <th>名額</th>
-                      <th>起算月份</th>
-                      <th>退出月份</th>
-                      <th style={{ textAlign: 'right' }}>單價 / 月費</th>
-                      <th>狀態</th>
-                      <th style={{ width: '220px', textAlign: 'center' }}>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.subscriptions.map((sub, idx) => {
-                      const isActive = isSubBillableInMonth(sub, data, data.currentMonth);
-                      const plat = data.platforms.find(p => p.name === sub.platformName);
-                      let priceStr = '—';
-                      if (sub.platformName === '自訂') {
-                        const m = data.members.find(mem => mem.name === sub.memberName);
-                        priceStr = m && m.customFee ? `$${m.customFee.toLocaleString()} (自訂)` : '$0 (自訂)';
-                      } else if (plat) {
-                        if (plat.billingMode === 'split') {
-                          const activeCount = data.subscriptions.filter(s => s.platformName === plat.name && isSubBillableInMonth(s, data, data.currentMonth)).length;
-                          const calculatedPrice = activeCount > 0 ? Math.round(plat.totalCost / activeCount) : 0;
-                          priceStr = `$${calculatedPrice.toLocaleString()} (均分 $${plat.totalCost} / ${activeCount}人)`;
-                        } else {
-                          priceStr = `$${plat.price.toLocaleString()} (固定)`;
-                        }
-                      }
-                      
-                      return (
-                        <tr key={sub.id}>
-                          <td>{idx + 1}</td>
-                          <td style={{ fontWeight: '600' }}>{sub.memberName}</td>
-                          <td>{sub.platformName}</td>
-                          <td>{sub.seatLabel || (sub.allowDuplicate ? '額外名額' : '—')}</td>
-                          <td>{sub.startMonth}</td>
-                          <td>{sub.exitMonth || '—'}</td>
-                          <td style={{ textAlign: 'right', fontWeight: '600' }}>{priceStr}</td>
-                          <td>
-                            <span className={`status-badge ${isActive ? 'paid' : 'unpaid'}`} style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
-                              {isActive ? 'ACTIVE' : 'EXITED'}
-                            </span>
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
-                              <button className="btn btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }} onClick={() => handleSetExitMonth(sub.id, sub.exitMonth)}>
-                                設定退出月
-                              </button>
-                              <button className="btn btn-danger" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }} onClick={() => handleRemoveSubscription(sub.id)}>
-                                移除
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
+          <SubscriptionsTab
+            data={data}
+            subName={subName}
+            setSubName={setSubName}
+            setSubPlatform={setSubPlatform}
+            subStart={subStart}
+            setSubStart={setSubStart}
+            activeMembers={activeMembers}
+            activePlatforms={activePlatforms}
+            effectiveSubPlatform={effectiveSubPlatform}
+            handleAddSubscription={handleAddSubscription}
+            handleSetExitMonth={handleSetExitMonth}
+            handleRemoveSubscription={handleRemoveSubscription}
+            isSubBillableInMonth={isSubBillableInMonth}
+          />
         )}
 
         {/* Configurations Tab */}
@@ -2360,289 +2277,24 @@ function App() {
 
         {/* History Browser Tab */}
         {activeTab === 'history' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '2rem' }}>
-            {/* Sidebar list of months */}
-            <div className="table-container" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', height: 'fit-content' }}>
-              <h4 style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>歷史對帳月份</h4>
-              {data.history.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', paddingLeft: '0.5rem' }}>暫無歷史結算檔案</p>
-              ) : (
-                data.history.map(hist => (
-                  <div key={hist.month} className={`nav-item ${selectedHistMonth === hist.month ? 'active' : ''}`} style={{ padding: '0.65rem 0.85rem', fontSize: '0.85rem' }} onClick={() => setSelectedHistMonth(hist.month)}>
-                    <span className="nav-code">AR</span> {hist.month}
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Selected Month Report */}
-            <div>
-              <section className={`history-seal-panel ${historyIntegrity.ok ? 'clear' : 'risk'}`}>
-                <div>
-                  <span>封存鏈</span>
-                  <h3>{historyIntegrity.ok ? '歷史帳完整' : '歷史帳異常'}</h3>
-                </div>
-                <div>
-                  <span>封存月份</span>
-                  <strong>{historyIntegrity.sealedCount || 0}/{historyIntegrity.count || 0}</strong>
-                </div>
-                <div>
-                  <span>最新月份</span>
-                  <strong>{historyIntegrity.latestMonth || '—'}</strong>
-                </div>
-                <div>
-                  <span>最新指紋</span>
-                  <code>{historyIntegrity.latestHash ? historyIntegrity.latestHash.slice(0, 12) : 'pending'}</code>
-                </div>
-                {historyIntegrity.problems && historyIntegrity.problems.length > 0 && (
-                  <div className="history-seal-problems">
-                    {historyIntegrity.problems.slice(0, 3).map((problem, idx) => (
-                      <p key={`${problem.code}-${idx}`}>{problem.detail}</p>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              {/* SVG Trend Chart */}
-              {(() => {
-                const histData = data.history.map(h => {
-                  const fees = h.balances.reduce((sum, b) => sum + b.subscriptionFee, 0);
-                  const paid = h.balances.reduce((sum, b) => sum + b.paid, 0);
-                  return { month: h.month, fees, paid };
-                });
-                
-                if (histData.length === 0) return null;
-                
-                const maxVal = Math.max(...histData.map(d => Math.max(d.fees, d.paid, 100)), 1000);
-                
-                const chartWidth = 500;
-                const chartHeight = 160;
-                const plotWidth = 420;
-                const plotHeight = 110;
-                const startX = 60;
-                const startY = 15;
-                const barSpacing = plotWidth / histData.length;
-                const barWidth = Math.max(8, barSpacing * 0.25);
-                
-                return (
-                  <div className="table-container" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
-                    <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: '600' }}>歷史收費與收款趨勢</h3>
-                    <div style={{ width: '100%', overflowX: 'auto' }}>
-                      <svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ minWidth: '450px' }}>
-                        {/* Grid lines (horizontal) */}
-                        {[0, 0.25, 0.5, 0.75, 1].map((ratio, idx) => {
-                          const y = startY + plotHeight * (1 - ratio);
-                          const val = Math.round(maxVal * ratio);
-                          return (
-                            <g key={idx}>
-                              <line x1={startX} y1={y} x2={startX + plotWidth} y2={y} stroke="rgba(255,255,255,0.05)" strokeDasharray="3,3" />
-                              <text x={startX - 8} y={y + 4} fill="var(--text-muted)" fontSize="9" textAnchor="end">${val.toLocaleString()}</text>
-                            </g>
-                          );
-                        })}
-                        
-                        {/* Draw bars */}
-                        {histData.map((d, idx) => {
-                          const x = startX + idx * barSpacing + barSpacing / 2;
-                          const feeHeight = (d.fees / maxVal) * plotHeight;
-                          const paidHeight = (d.paid / maxVal) * plotHeight;
-                          const label = d.month.split('/')[1] + '月'; // e.g. "05月"
-                          
-                          return (
-                            <g key={idx}>
-                              {/* Fees bar (blue) */}
-                              <rect x={x - barWidth - 2} y={startY + plotHeight - feeHeight} width={barWidth} height={feeHeight} 
-                                    fill="#60a5fa" rx="2" opacity="0.8" />
-                              {/* Paid bar (green) */}
-                              <rect x={x + 2} y={startY + plotHeight - paidHeight} width={barWidth} height={paidHeight} 
-                                    fill="var(--success)" rx="2" opacity="0.8" />
-                              {/* Month label */}
-                              <text x={x} y={startY + plotHeight + 16} fill="var(--text-muted)" fontSize="10" textAnchor="middle">{label}</text>
-                            </g>
-                          );
-                        })}
-                        
-                        {/* Axis line */}
-                        <line x1={startX} y1={startY + plotHeight} x2={startX + plotWidth} y2={startY + plotHeight} stroke="rgba(255,255,255,0.15)" />
-                      </svg>
-                      <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.75rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#60a5fa' }}></span>
-                          <span>應收訂閱月費</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: 'var(--success)' }}></span>
-                          <span>實收已入帳金額</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {data.history.find(h => h.month === selectedHistMonth) ? (
-                (() => {
-                  const hist = data.history.find(h => h.month === selectedHistMonth);
-                  return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                      {/* Ending Balances Table */}
-                      <div className="table-container" style={{ marginBottom: '0' }}>
-                        <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--panel-border)', fontWeight: '600', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span>{hist.month} 結帳對帳單總覽</span>
-                          <button className="btn btn-secondary" style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', flexGrow: 0 }} onClick={() => exportToCSV(hist.month, hist.balances, hist.payments, hist.tempCharges)}>
-                            匯出該月報表
-                          </button>
-                        </div>
-                        <div className="table-wrapper">
-                          <table>
-                            <thead>
-                              <tr>
-                                <th>成員姓名</th>
-                                <th style={{ textAlign: 'right' }}>期初前期餘額</th>
-                                <th style={{ textAlign: 'right' }}>該月訂閱費</th>
-                                <th style={{ textAlign: 'right' }}>該月臨時加帳</th>
-                                <th style={{ textAlign: 'right' }}>該月已付金額</th>
-                                <th style={{ textAlign: 'right' }}>期末剩餘應收</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {hist.balances.map(b => (
-                                <tr key={b.memberName}>
-                                  <td style={{ fontWeight: '600' }}>{b.memberName}</td>
-                                  <td style={{ textAlign: 'right' }}>${b.priorBalance.toLocaleString()}</td>
-                                  <td style={{ textAlign: 'right' }}>${b.subscriptionFee.toLocaleString()}</td>
-                                  <td style={{ textAlign: 'right' }}>${b.tempCharge.toLocaleString()}</td>
-                                  <td style={{ textAlign: 'right', color: 'var(--success)' }}>-${b.paid.toLocaleString()}</td>
-                                  <td style={{ textAlign: 'right', fontWeight: '700', color: b.endingBalance > 0 ? 'var(--warning)' : '#60a5fa' }}>
-                                    ${b.endingBalance.toLocaleString()}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-
-                      {/* Transaction Logs for that month */}
-                      <div className="logs-section">
-                        <div className="log-panel">
-                          <h4>該月付款歷史日誌</h4>
-                          <div className="log-list" style={{ marginTop: '1rem' }}>
-                            {hist.payments.length === 0 ? (
-                              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '1rem 0' }}>無付款記錄</p>
-                            ) : (
-                              hist.payments.map(p => (
-                                <div key={p.id} className="log-item" style={{ background: 'rgba(255,255,255,0.01)' }}>
-                                  <div className="log-info">
-                                    <span style={{ fontWeight: '600' }}>{p.memberName}</span>
-                                    <span className="log-meta">{p.date} • {p.method} {p.note && `• ${p.note}`}</span>
-                                  </div>
-                                  <div className="log-amount" style={{ color: 'var(--success)' }}>
-                                    ${p.amount.toLocaleString()}
-                                  </div>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="log-panel">
-                          <h4>該月臨時加帳歷史日誌</h4>
-                          <div className="log-list" style={{ marginTop: '1rem' }}>
-                            {hist.tempCharges.length === 0 ? (
-                              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '1rem 0' }}>無加帳記錄</p>
-                            ) : (
-                              hist.tempCharges.map(c => (
-                                <div key={c.id} className="log-item" style={{ background: 'rgba(255,255,255,0.01)' }}>
-                                  <div className="log-info">
-                                    <span style={{ fontWeight: '600' }}>{c.memberName}</span>
-                                    <span className="log-meta">{c.date} {c.desc && `• ${c.desc}`}</span>
-                                  </div>
-                                  <div className="log-amount" style={{ color: 'var(--warning)' }}>
-                                    ${c.amount.toLocaleString()}
-                                  </div>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()
-              ) : (
-                <div className="table-container" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  請選擇左側月份載入歷史對帳報告。
-                </div>
-              )}
-            </div>
-          </div>
+          <HistoryTab
+            data={data}
+            selectedHistMonth={selectedHistMonth}
+            setSelectedHistMonth={setSelectedHistMonth}
+            historyIntegrity={historyIntegrity}
+            exportToCSV={exportToCSV}
+          />
         )}
 
         {/* AI Assistant Tab */}
         {activeTab === 'ai-assistant' && (
-          <div className="ai-assistant-container">
-            <div className="ai-chat-header">
-              <div className="ai-chat-header-title">
-                <span style={{ fontSize: '1.5rem' }}>✨</span>
-                <div>
-                  <h2>AI 帳務助理</h2>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    結合 RAG 向量搜尋與智能 Tool Calling 對話查帳
-                  </span>
-                </div>
-              </div>
-              <div className="ai-status-badge">
-                <span className="ai-typing-dot" style={{ width: '8px', height: '8px', background: '#34d399', opacity: 1, animation: 'none' }}></span>
-                Google AI Studio 已啟用
-              </div>
-            </div>
-
-            <div className="ai-messages-area" id="ai-messages-container">
-              {aiMessages.map((msg, i) => (
-                <div key={i} className={`ai-message ${msg.role === 'user' ? 'user' : msg.role === 'system' ? 'system-info' : 'assistant'}`}>
-                  {msg.tool_calls && msg.tool_calls.map((t, idx) => (
-                    <div key={idx} className="ai-message-tool-badge">
-                      🛠️ 呼叫工具: {t.function.name}
-                    </div>
-                  ))}
-                  {msg.content}
-                </div>
-              ))}
-              {aiLoading && (
-                <div className="ai-message assistant" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div className="ai-typing-indicator">
-                    <span className="ai-typing-dot"></span>
-                    <span className="ai-typing-dot"></span>
-                    <span className="ai-typing-dot"></span>
-                  </div>
-                  <span>助理正在思考並查詢資料庫中...</span>
-                </div>
-              )}
-            </div>
-
-            <div className="ai-input-area">
-              <div className="ai-chat-suggestions">
-                <span className="ai-suggestion-chip" onClick={() => setAiInput("有哪些會計警告或異常嗎？")}>🔍 檢查會計警告</span>
-                <span className="ai-suggestion-chip" onClick={() => setAiInput("系統當前帳務的整體概況為何？")}>📊 系統整體概況</span>
-                <span className="ai-suggestion-chip" onClick={() => setAiInput("這個月誰還沒有結清帳款？")}>💸 誰還沒繳錢</span>
-                <span className="ai-suggestion-chip" onClick={() => setAiInput("查詢 Member Beta 的歷史付款紀錄")}>🕒 Beta 歷史紀錄</span>
-              </div>
-              <form className="ai-input-form" onSubmit={handleSendChatMessage}>
-                <input
-                  type="text"
-                  className="ai-chat-input"
-                  placeholder="問我任何關於帳務的問題，例如: 'Beta 以前繳了多少錢？'..."
-                  value={aiInput}
-                  onChange={(e) => setAiInput(e.target.value)}
-                  disabled={aiLoading}
-                />
-                <button type="submit" className="ai-chat-send-btn" disabled={aiLoading || !aiInput.trim()}>
-                  傳送 ✨
-                </button>
-              </form>
-            </div>
-          </div>
+          <AiAssistantTab
+            aiMessages={aiMessages}
+            aiInput={aiInput}
+            setAiInput={setAiInput}
+            aiLoading={aiLoading}
+            handleSendChatMessage={handleSendChatMessage}
+          />
         )}
       </main>
 

@@ -44,7 +44,7 @@ function generateChunks(db: Database): IndexChunk[] {
 
             let text = `[成員當前狀態] 成員名: ${member.name}, 帳期: ${currentMonth}. `;
             text += `前期餘額(上期結轉): $${member.priorBalance || 0} 元. `;
-            if (member.customFee !== null && member.customFee !== undefined && member.customFee !== '') {
+            if (member.customFee != null) {
                 text += `使用自訂費用小計: $${member.customFee} 元. `;
             } else if (activeSubs.length > 0) {
                 text += `本期活躍訂閱項目: ${activeSubs.join(', ')}. `;
@@ -74,7 +74,7 @@ function generateChunks(db: Database): IndexChunk[] {
 
     if (Array.isArray(db.tempCharges)) {
         db.tempCharges.forEach(tc => {
-            let text = `[代墊/臨時費用] 成員: ${tc.memberName}, 金額: $${tc.amount} 元, 日期: ${tc.date}, 項目說明: ${tc.desc || '無'}. `;
+            const text = `[代墊/臨時費用] 成員: ${tc.memberName}, 金額: $${tc.amount} 元, 日期: ${tc.date}, 項目說明: ${tc.desc || '無'}. `;
             chunks.push({
                 text: text,
                 source: { type: 'temp_charge', id: tc.id, memberName: tc.memberName }
@@ -158,9 +158,9 @@ async function buildRAGIndex(db: Database): Promise<void> {
         });
 
         const results = await Promise.all(promises);
-        cachedIndex = results.filter((r): r is IndexChunk => r !== null);
+        cachedIndex = results.filter(r => r !== null) as IndexChunk[];
         isDirty = false;
-        console.log(`RAG index successfully built with ${cachedIndex.length} chunks.`);
+        console.log(`RAG index successfully built with ${cachedIndex!.length} chunks.`);
     } catch (err) {
         console.error('Error building RAG index:', err);
     } finally {

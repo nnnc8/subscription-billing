@@ -4,6 +4,7 @@ export interface Platform {
   billingMode: 'fixed' | 'split'
   price: number
   totalCost: number
+  status?: string
   archived?: boolean
   archivedAt?: string
   archivedMonth?: string
@@ -66,7 +67,7 @@ export interface TempCharge {
 }
 
 export interface BalanceEntry {
-  id: string
+  id?: string
   memberId?: string
   memberName: string
   priorBalance: number
@@ -89,7 +90,7 @@ export interface HistoryEntry {
   balances: BalanceEntry[]
   payments: Payment[]
   tempCharges: TempCharge[]
-  seal: HistorySeal
+  seal?: HistorySeal
 }
 
 export interface LedgerEvent {
@@ -145,14 +146,18 @@ export interface ClosePreview {
   nextMonth: string
   ready: boolean
   totals: {
+    priorBalance: number
     subscriptionFee: number
+    tempCharge: number
     paid: number
+    endingBalance: number
     receivable: number
     unpaidMembers: number
   }
+  balances: BalanceEntry[]
   checks: Array<{
     id: string
-    status: 'pass' | 'warn' | 'fail'
+    status: 'pass' | 'warn' | 'fail' | 'block'
     label: string
     detail: string
   }>
@@ -169,25 +174,50 @@ export interface ClosePreview {
 }
 
 export interface SystemSnapshot {
-  version: string
-  generatedAt: string
+  ok: boolean
+  fingerprint: string
   currentMonth: string
-  baseMonth: string
-  members: number
-  platforms: number
-  subscriptions: number
-  activeSubscriptions: number
-  totalPayments: number
-  totalTempCharges: number
-  totalReceivable: number
-  paidThisMonth: number
-  unpaidMembers: number
-  historyMonths: number
+  generatedAt: string
   health: {
     status: 'clean' | 'warning' | 'risk'
-    warningsCount: number
-    sealedHistoryCount: number
-    ledgerIntegrity: boolean
+    label: string
+    warningCount: number
+    criticalCount: number
+    ledgerOk: boolean
+  }
+  counts: {
+    members: number
+    activeMembers: number
+    archivedMembers: number
+    platforms: number
+    activePlatforms: number
+    archivedPlatforms: number
+    subscriptions: number
+    payments: number
+    paymentRecords: number
+    voidedPayments: number
+    tempCharges: number
+    tempChargeRecords: number
+    voidedTempCharges: number
+    history: number
+    ledger: number
+  }
+  totals: {
+    subscriptionFee: number
+    paid: number
+    receivable: number
+    unpaidMembers: number
+  }
+  history: {
+    count: number
+    latestMonth: string | null
+    integrity: any
+  }
+  ledger: {
+    ok: boolean
+    count: number
+    lastHash: string | null
+    latest: any
   }
 }
 

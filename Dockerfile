@@ -14,11 +14,12 @@ FROM base AS runtime
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/server.cjs ./server.cjs
+COPY --from=build /app/server.ts ./server.ts
+COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/lib ./lib
 COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/fixtures ./fixtures
 COPY --from=build /app/com.nc8.subscription-billing.plist ./
 ENV NODE_ENV=production
 EXPOSE 3000
-CMD ["node", "server.cjs"]
+CMD ["pnpm", "start"]
