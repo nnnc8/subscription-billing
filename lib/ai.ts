@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const GEMINI_API_KEY = process.env.GOOGLE_GEMINI_API_KEY || '';
+const getGeminiApiKey = () => process.env.GOOGLE_GEMINI_API_KEY || '';
 const DEFAULT_PROJECT_ID = 'project-a06597ee-20ec-4e59-8e7';
 const DEFAULT_REGION = 'us-central1';
 
@@ -160,7 +160,7 @@ async function callDirectVertexAI(modelName: string, messages: GoogleMessage[], 
 async function callDirectAIStudio(modelName: string, messages: GoogleMessage[], options: Record<string, unknown> = {}): Promise<string> {
     const { systemInstruction, contents } = convertMessagesToGoogleFormat(messages);
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${getGeminiApiKey()}`;
 
     const body: Record<string, unknown> = {
         contents: contents,
@@ -238,7 +238,7 @@ export async function createEmbedding(text: string): Promise<number[]> {
     const rawModelName = modelName.replace(/^@vertex-ai\//, '').replace(/^google\//, '');
 
     try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${rawModelName}:embedContent?key=${GEMINI_API_KEY}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${rawModelName}:embedContent?key=${getGeminiApiKey()}`;
         const res = await fetch(url, {
             method: 'POST',
             headers: {

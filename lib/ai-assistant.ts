@@ -9,7 +9,7 @@ import {
 } from './accounting.js';
 import type { Database } from '../src/types/billing.js';
 
-const GEMINI_API_KEY = process.env.GOOGLE_GEMINI_API_KEY || '';
+const getGeminiApiKey = () => process.env.GOOGLE_GEMINI_API_KEY || '';
 
 const tools: Array<{
     type: string
@@ -259,7 +259,7 @@ function geminiResponseToAssistantMessage(candidate: GeminiCandidate): Assistant
 async function callGeminiWithTools(modelName: string, messages: AssistantMessage[], geminiTools: ReturnType<typeof buildGeminiTools>, temperature = 0.2): Promise<AssistantMessage> {
     const { contents, systemInstruction } = convertToGeminiContents(messages);
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${getGeminiApiKey()}`;
 
     const body: Record<string, unknown> = {
         contents,
