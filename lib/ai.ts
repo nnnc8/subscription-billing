@@ -1,11 +1,13 @@
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
-const GEMINI_API_KEY = '***REMOVED***';
+const GEMINI_API_KEY = process.env.GOOGLE_GEMINI_API_KEY || '';
 const DEFAULT_PROJECT_ID = 'project-a06597ee-20ec-4e59-8e7';
 const DEFAULT_REGION = 'us-central1';
 
 export function isAIConfigured(): boolean {
-    return !!process.env.PORTKEY_API_KEY || fs.existsSync('/Users/nc8/.config/gcloud/application_default_credentials.json');
+    return !!process.env.GOOGLE_GEMINI_API_KEY;
 }
 
 interface PortkeyClient {
@@ -24,7 +26,7 @@ function getPortkeyClient(): PortkeyClient {
     // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
     const { Portkey } = require('portkey-ai');
     const config = {
-        apiKey: process.env.PORTKEY_API_KEY || 'nhHEpfsw5sTpXp1E3PQGDQd03vdN',
+        apiKey: process.env.PORTKEY_API_KEY || '',
         baseURL: process.env.PORTKEY_BASE_URL || 'https://api.portkey.ai/v1',
         vertexProjectId: DEFAULT_PROJECT_ID,
         vertexRegion: DEFAULT_REGION
@@ -82,7 +84,7 @@ function convertMessagesToGoogleFormat(messages: GoogleMessage[]): GoogleFormatR
 }
 
 async function getADCAccessToken(): Promise<{ accessToken: string; projectId: string }> {
-    const credsPath = '/Users/nc8/.config/gcloud/application_default_credentials.json';
+    const credsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || path.join(os.homedir(), '.config/gcloud/application_default_credentials.json');
     if (!fs.existsSync(credsPath)) {
         throw new Error('Local Application Default Credentials (ADC) file not found');
     }
@@ -236,7 +238,7 @@ export async function createEmbedding(text: string): Promise<number[]> {
     const rawModelName = modelName.replace(/^@vertex-ai\//, '').replace(/^google\//, '');
 
     try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent?key=${GEMINI_API_KEY}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${rawModelName}:embedContent?key=${GEMINI_API_KEY}`;
         const res = await fetch(url, {
             method: 'POST',
             headers: {

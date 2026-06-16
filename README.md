@@ -224,6 +224,14 @@ pnpm run lint
 
 ---
 
+## AI-Assisted Development
+
+This codebase was modernized and extended using **Antigravity** (Google DeepMind's agentic AI coding assistant) for pair programming, architectural planning, and test-driven refactoring. 
+
+Key developer-agent collaborative steps are documented in [docs/ai-development-log.md](docs/ai-development-log.md).
+
+---
+
 ## Deployment
 
 ### Cloud Containers (Docker)

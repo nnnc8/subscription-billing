@@ -19,6 +19,8 @@ dist-ssr
 .privacy-terms.*
 *.tmp
 database.json
+database.db
+*.db
 database.json.*.tmp
 session_handoff.md
 data/

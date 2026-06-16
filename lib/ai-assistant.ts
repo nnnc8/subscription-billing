@@ -9,7 +9,7 @@ import {
 } from './accounting.js';
 import type { Database } from '../src/types/billing.js';
 
-const GEMINI_API_KEY = '***REMOVED***';
+const GEMINI_API_KEY = process.env.GOOGLE_GEMINI_API_KEY || '';
 
 const tools: Array<{
     type: string
