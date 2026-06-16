@@ -1,4 +1,5 @@
-import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { AIMessage } from '../types/billing.js';
 
 interface AiAssistantTabProps {
@@ -42,7 +43,13 @@ export const AiAssistantTab: React.FC<AiAssistantTabProps> = ({
                 🛠️ 呼叫工具: {t.function.name}
               </div>
             ))}
-            {msg.content}
+            {msg.role === 'user' ? (
+              msg.content
+            ) : (
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {msg.content}
+              </ReactMarkdown>
+            )}
           </div>
         ))}
         {aiLoading && (
