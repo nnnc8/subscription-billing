@@ -36,3 +36,4 @@ backups/*.json
 *.njsproj
 *.sln
 *.sw?
+*.tsbuildinfo

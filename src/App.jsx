@@ -2453,6 +2453,22 @@ function App() {
               <span className="modal-title">月結控制台：{data.currentMonth}</span>
               <span className="modal-close" onClick={() => { setShowSettleModal(false); setClosePreview(null); }}>&times;</span>
             </div>
+
+            {/* Lifecycle current-state notice */}
+            {lifecycleStatus?.isCurrent && (
+              <div style={{
+                padding: '10px 14px',
+                marginBottom: '0.75rem',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--blue-bg)',
+                border: '1px solid rgba(0,122,255,0.2)',
+                fontSize: '0.82rem',
+                color: 'var(--blue)',
+              }}>
+                ℹ️ 帳期已是最新（{data.currentMonth} = 系統月份）。帳期由系統依台北時間於月初自動推進，無需手動月結。
+              </div>
+            )}
+
             {closePreviewLoading ? (
               <div className="close-preview-loading">正在執行月結預檢...</div>
             ) : closePreview ? (
@@ -2507,7 +2523,15 @@ function App() {
             )}
             <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
               <button type="button" className="btn btn-secondary" onClick={() => { setShowSettleModal(false); setClosePreview(null); }}>取消</button>
-              <button type="button" className="btn btn-primary" onClick={handleSettleMonth} disabled={closePreviewLoading || !closePreview?.ready}>確認結算本月</button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSettleMonth}
+                disabled={closePreviewLoading || !closePreview?.ready || lifecycleStatus?.isCurrent}
+                title={lifecycleStatus?.isCurrent ? '帳期已是最新，無需手動月結' : undefined}
+              >
+                確認結算本月
+              </button>
             </div>
           </div>
         </div>

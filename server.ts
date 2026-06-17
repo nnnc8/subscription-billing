@@ -37,6 +37,7 @@ import {
     isMemberRecord,
     isPlatformRecord,
     isTransactionVoided,
+    monthToCode,
     normalizeDatabaseRelations,
     previousMonthString,
     resolveMember,
@@ -48,7 +49,7 @@ import { generateAIReminder } from './lib/ai-reminder.js';
 import { handleAssistantChat } from './lib/ai-assistant.js';
 import { invalidateRAGIndex, queryRAG } from './lib/rag.js';
 import { parseAndClassifyProposals, applyProposal } from './lib/automation.js';
-import { runLifecycleCatchUp, getLifecycleStatus } from './lib/lifecycle.js';
+import { runLifecycleCatchUp, getLifecycleStatus, getSystemMonth } from './lib/lifecycle.js';
 import type { Database, LedgerEvent, Payment, TempCharge, Member, Platform, Subscription, AutomationProposal } from './src/types/billing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -694,7 +695,7 @@ app.use('/api', requireAuth);
 // ----------------------------------------------------
 
 app.get('/api/data', (req: Request, res: Response) => {
-    const db = readDB();
+    let db = readDB();
     if (!db) {
         res.status(500).json({ error: 'Failed to read database' });
         return;
@@ -704,7 +705,18 @@ app.get('/api/data', (req: Request, res: Response) => {
     try {
         const lcResults = runLifecycleCatchUp(db);
         if (lcResults.some(r => r.advanced)) {
-            if (writeDB(db)) {
+            const persisted = writeDB(db);
+            if (!persisted) {
+                // Write failed: discard in-memory mutations, re-read persisted state
+                // so the client always sees what's actually on disk.
+                console.error('[lifecycle] /api/data writeDB failed — re-reading persisted state');
+                const freshDb = readDB();
+                if (!freshDb) {
+                    res.status(500).json({ error: 'Database write failed and re-read also failed' });
+                    return;
+                }
+                db = freshDb;
+            } else {
                 invalidateRAGIndex();
             }
         }
@@ -1145,6 +1157,20 @@ app.delete('/api/platform/:id', (req: Request, res: Response) => {
 app.post('/api/settle', (req: Request, res: Response) => {
     const db = readDB();
     if (!db) { res.status(500).json({ error: 'Database error' }); return; }
+
+    // Guard: manual settle must not push billing period past the real system month.
+    // Only a catch-up settle (db.currentMonth < systemMonth) is allowed.
+    const systemMonth = getSystemMonth();
+    const dbCode = monthToCode(db.currentMonth);
+    const sysCode = monthToCode(systemMonth);
+    if (dbCode !== null && sysCode !== null && dbCode >= sysCode) {
+        res.status(409).json({
+            error: `帳期已是最新（${db.currentMonth}），無需手動月結。帳期由系統依台北時間自動推進。`,
+            currentMonth: db.currentMonth,
+            systemMonth,
+        });
+        return;
+    }
 
     const preview = getClosePreview(db);
     if (!preview.ready) {
