@@ -1,213 +1,228 @@
 import { useState, useCallback } from 'react';
 
 // ---------------------------------------------------------------------------
-// Confidence Badge
+// Status chip — operational style (no gradients)
 // ---------------------------------------------------------------------------
-function ConfidenceBadge({ score }) {
+function StatusChip({ status }) {
+    const config = {
+        applied: { label: '已入帳', color: 'var(--green)', bg: 'var(--green-bg)' },
+        pending: { label: '待覆核', color: 'var(--orange)', bg: 'var(--orange-bg)' },
+        rejected: { label: '已擋下', color: 'var(--red)', bg: 'var(--red-bg)' },
+    };
+    const c = config[status] || config.rejected;
+    return (
+        <span style={{
+            display: 'inline-block',
+            padding: '2px 8px',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            color: c.color,
+            background: c.bg,
+            letterSpacing: '0.01em',
+        }}>
+            {c.label}
+        </span>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Kind chip — compact
+// ---------------------------------------------------------------------------
+function KindChip({ kind }) {
+    const config = {
+        payment: { label: '付款', color: 'var(--blue)', bg: 'var(--blue-bg)' },
+        subscription: { label: '訂閱', color: 'var(--purple)', bg: 'var(--purple-bg)' },
+        tempCharge: { label: '加帳', color: 'var(--orange)', bg: 'var(--orange-bg)' },
+    };
+    const c = config[kind] || { label: kind, color: 'var(--text-secondary)', bg: 'transparent' };
+    return (
+        <span style={{
+            display: 'inline-block',
+            padding: '2px 7px',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: '0.7rem',
+            fontWeight: 600,
+            color: c.color,
+            background: c.bg,
+        }}>
+            {c.label}
+        </span>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Confidence cell — low conf (<70%) in red
+// ---------------------------------------------------------------------------
+function ConfidenceCell({ score }) {
     const pct = Math.round(score * 100);
-    const color = pct >= 90 ? '#10b981' : pct >= 70 ? '#f59e0b' : '#ef4444';
-    const bg = pct >= 90 ? 'rgba(16,185,129,0.12)' : pct >= 70 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)';
+    const color = pct >= 90 ? 'var(--green)' : pct >= 70 ? 'var(--text-secondary)' : 'var(--red)';
     return (
-        <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: '4px',
-            padding: '2px 10px', borderRadius: '999px',
-            fontSize: '12px', fontWeight: 700,
-            color, background: bg, border: `1px solid ${color}40`,
-        }}>
-            {pct}% 信心
+        <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: '0.8rem', color }}>
+            {pct}%
         </span>
     );
 }
 
 // ---------------------------------------------------------------------------
-// Proposal Kind Label
+// Payload description — compact single-line summary
 // ---------------------------------------------------------------------------
-const KIND_META = {
-    payment: { icon: '💳', label: '付款', color: '#60a5fa' },
-    subscription: { icon: '📦', label: '訂閱', color: '#a78bfa' },
-    tempCharge: { icon: '🧾', label: '加帳', color: '#fbbf24' },
-};
-
-function KindBadge({ kind }) {
-    const meta = KIND_META[kind] || { icon: '❓', label: kind, color: '#9ca3af' };
-    return (
-        <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: '4px',
-            padding: '2px 10px', borderRadius: '999px',
-            fontSize: '12px', fontWeight: 700,
-            color: meta.color,
-            background: `${meta.color}18`,
-            border: `1px solid ${meta.color}40`,
-        }}>
-            {meta.icon} {meta.label}
-        </span>
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Payload Summary
-// ---------------------------------------------------------------------------
-function PayloadSummary({ kind, payload }) {
-    if (!payload) return null;
+function PayloadDesc({ kind, payload }) {
+    if (!payload) return <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
     if (kind === 'payment') {
         return (
-            <span style={{ color: 'var(--color-text-secondary, #9ca3af)', fontSize: '13px' }}>
-                {payload.memberName} 轉 <strong style={{ color: '#10b981' }}>${payload.amount}</strong>
-                {payload.date ? ` (${payload.date})` : ''}
-                {payload.note ? ` — ${payload.note}` : ''}
+            <span>
+                <strong>{payload.memberName}</strong>
+                {payload.amount != null && <> &nbsp;${payload.amount}</>}
+                {payload.date && <> · {payload.date}</>}
             </span>
         );
     }
     if (kind === 'tempCharge') {
         return (
-            <span style={{ color: 'var(--color-text-secondary, #9ca3af)', fontSize: '13px' }}>
-                {payload.memberName} 加帳 <strong style={{ color: '#fbbf24' }}>${payload.amount}</strong>
-                {payload.desc ? ` — ${payload.desc}` : ''}
+            <span>
+                <strong>{payload.memberName}</strong>
+                {payload.amount != null && <> &nbsp;+${payload.amount}</>}
+                {payload.desc && <> · {payload.desc}</>}
             </span>
         );
     }
     if (kind === 'subscription') {
         return (
-            <span style={{ color: 'var(--color-text-secondary, #9ca3af)', fontSize: '13px' }}>
-                {payload.memberName} 訂閱 <strong style={{ color: '#a78bfa' }}>{payload.platformName}</strong>
-                {' '}從 {payload.startMonth} 起
+            <span>
+                <strong>{payload.memberName}</strong>
+                {' '}{payload.platformName && <>訂 {payload.platformName}</>}
+                {payload.startMonth && <> 從 {payload.startMonth}</>}
             </span>
         );
     }
-    return <span style={{ fontSize: '12px', opacity: 0.6 }}>{JSON.stringify(payload)}</span>;
+    return <span style={{ color: 'var(--text-tertiary)', fontSize: '0.78rem' }}>{JSON.stringify(payload).slice(0, 40)}</span>;
 }
 
 // ---------------------------------------------------------------------------
-// Status Icon
+// Proposal row in the queue table
 // ---------------------------------------------------------------------------
-function StatusIcon({ status }) {
-    if (status === 'applied') return <span title="已自動套用" style={{ fontSize: '18px' }}>✅</span>;
-    if (status === 'pending') return <span title="待確認" style={{ fontSize: '18px' }}>⏳</span>;
-    return <span title="被擋下" style={{ fontSize: '18px' }}>❌</span>;
-}
-
-// ---------------------------------------------------------------------------
-// Proposal Card
-// ---------------------------------------------------------------------------
-function ProposalCard({ proposal, onConfirm, onReject, confirmingId, rejectingId }) {
+function ProposalRow({ proposal, onConfirm, onReject, confirmingId, rejectingId }) {
+    const [showWarnings, setShowWarnings] = useState(false);
     const { id, kind, sourceText, confidence, reason, warnings, payload, status, rejectReason, ledgerEventId } = proposal;
     const isConfirming = confirmingId === id;
     const isRejecting = rejectingId === id;
-
-    const cardStyle = {
-        background: status === 'applied'
-            ? 'linear-gradient(135deg, rgba(16,185,129,0.07), rgba(16,185,129,0.03))'
-            : status === 'rejected'
-            ? 'linear-gradient(135deg, rgba(239,68,68,0.07), rgba(239,68,68,0.03))'
-            : 'linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))',
-        border: status === 'applied'
-            ? '1px solid rgba(16,185,129,0.2)'
-            : status === 'rejected'
-            ? '1px solid rgba(239,68,68,0.18)'
-            : '1px solid rgba(255,255,255,0.1)',
-        borderRadius: '12px',
-        padding: '16px 20px',
-        marginBottom: '10px',
-        transition: 'box-shadow 0.2s',
-    };
+    const hasWarnings = warnings && warnings.length > 0;
 
     return (
-        <div style={cardStyle} className="proposal-card">
-            {/* Header Row */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                <StatusIcon status={status} />
-                <KindBadge kind={kind} />
-                <ConfidenceBadge score={confidence} />
-                {status === 'applied' && ledgerEventId && (
-                    <span style={{
-                        fontSize: '11px', color: '#6ee7b7', background: 'rgba(16,185,129,0.1)',
-                        padding: '2px 8px', borderRadius: '6px', fontFamily: 'monospace',
-                    }}>
-                        ledger: {ledgerEventId}
-                    </span>
-                )}
-            </div>
-
-            {/* Source Text */}
-            <div style={{
-                fontSize: '12px', color: 'rgba(255,255,255,0.45)',
-                fontStyle: 'italic', marginBottom: '6px',
-                background: 'rgba(255,255,255,0.04)', padding: '4px 10px', borderRadius: '6px',
-                borderLeft: '2px solid rgba(255,255,255,0.15)',
+        <>
+            <tr style={{
+                borderBottom: '1px solid var(--separator)',
+                background: status === 'applied'
+                    ? 'rgba(52,199,89,0.03)'
+                    : status === 'rejected'
+                    ? 'rgba(255,59,48,0.03)'
+                    : 'transparent',
             }}>
-                原文：{sourceText.length > 80 ? sourceText.slice(0, 80) + '…' : sourceText}
-            </div>
+                {/* Kind */}
+                <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                    <KindChip kind={kind} />
+                </td>
 
-            {/* Payload Summary */}
-            <div style={{ marginBottom: '6px' }}>
-                <PayloadSummary kind={kind} payload={payload} />
-            </div>
+                {/* Description */}
+                <td style={{ padding: '8px 10px', fontSize: '0.82rem', color: 'var(--text-primary)' }}>
+                    <PayloadDesc kind={kind} payload={payload} />
+                    {hasWarnings && (
+                        <button
+                            onClick={() => setShowWarnings(v => !v)}
+                            style={{
+                                marginLeft: '6px', border: 'none', background: 'none',
+                                cursor: 'pointer', color: 'var(--orange)', fontSize: '0.7rem',
+                                padding: '0 2px', verticalAlign: 'middle',
+                            }}
+                            title={warnings.join('; ')}
+                        >
+                            ⚠ {warnings.length}
+                        </button>
+                    )}
+                </td>
 
-            {/* Reason */}
-            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>
-                💡 {reason}
-            </div>
+                {/* Confidence */}
+                <td style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <ConfidenceCell score={confidence} />
+                </td>
 
-            {/* Warnings */}
-            {warnings && warnings.length > 0 && (
-                <div style={{ marginBottom: '8px' }}>
-                    {warnings.map((w, i) => (
-                        <div key={i} style={{
-                            fontSize: '11px', color: '#fbbf24',
-                            display: 'flex', alignItems: 'center', gap: '4px',
-                        }}>
-                            ⚠️ {w}
-                        </div>
-                    ))}
-                </div>
+                {/* Status */}
+                <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                    <StatusChip status={status} />
+                </td>
+
+                {/* Ledger / Actions */}
+                <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                    {status === 'applied' && ledgerEventId && (
+                        <code
+                            style={{
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '0.68rem',
+                                color: 'var(--blue)',
+                                cursor: 'pointer',
+                                userSelect: 'all',
+                            }}
+                            title={`Ledger event: ${ledgerEventId}`}
+                            onClick={() => navigator.clipboard?.writeText(ledgerEventId)}
+                        >
+                            {ledgerEventId.slice(0, 12)}
+                        </code>
+                    )}
+                    {status === 'pending' && (
+                        <span style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            <button
+                                className="btn btn-primary"
+                                style={{ padding: '3px 10px', fontSize: '0.75rem', minHeight: '28px' }}
+                                onClick={() => onConfirm(id)}
+                                disabled={isConfirming || isRejecting}
+                            >
+                                {isConfirming ? '…' : '入帳'}
+                            </button>
+                            <button
+                                className="btn btn-secondary"
+                                style={{ padding: '3px 10px', fontSize: '0.75rem', minHeight: '28px' }}
+                                onClick={() => onReject(id)}
+                                disabled={isConfirming || isRejecting}
+                            >
+                                {isRejecting ? '…' : '拒絕'}
+                            </button>
+                        </span>
+                    )}
+                    {status === 'rejected' && rejectReason && (
+                        <span
+                            style={{ fontSize: '0.72rem', color: 'var(--red)', cursor: 'default' }}
+                            title={rejectReason}
+                        >
+                            {rejectReason.slice(0, 30)}{rejectReason.length > 30 ? '…' : ''}
+                        </span>
+                    )}
+                </td>
+            </tr>
+
+            {/* Expandable warnings row */}
+            {showWarnings && hasWarnings && (
+                <tr style={{ background: 'var(--orange-bg)' }}>
+                    <td colSpan={5} style={{ padding: '6px 10px 6px 20px', fontSize: '0.75rem', color: 'var(--orange)' }}>
+                        <strong>原文：</strong>
+                        <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                            {sourceText.slice(0, 80)}{sourceText.length > 80 ? '…' : ''}
+                        </span>
+                        <span style={{ margin: '0 8px', color: 'var(--separator-opaque)' }}>|</span>
+                        <strong>AI 判斷：</strong>
+                        <span style={{ color: 'var(--text-secondary)' }}>{reason}</span>
+                        {warnings.map((w, i) => (
+                            <span key={i} style={{ marginLeft: '8px' }}>· ⚠ {w}</span>
+                        ))}
+                    </td>
+                </tr>
             )}
-
-            {/* Reject Reason */}
-            {status === 'rejected' && rejectReason && (
-                <div style={{
-                    fontSize: '11px', color: '#fca5a5',
-                    background: 'rgba(239,68,68,0.08)', padding: '4px 10px', borderRadius: '6px',
-                    marginBottom: '6px',
-                }}>
-                    🚫 {rejectReason}
-                </div>
-            )}
-
-            {/* Actions (pending only) */}
-            {status === 'pending' && (
-                <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-                    <button
-                        onClick={() => onConfirm(id)}
-                        disabled={isConfirming || isRejecting}
-                        style={{
-                            padding: '6px 16px', borderRadius: '8px', fontSize: '13px',
-                            fontWeight: 600, border: 'none', cursor: 'pointer',
-                            background: isConfirming ? 'rgba(16,185,129,0.3)' : 'rgba(16,185,129,0.85)',
-                            color: '#fff', transition: 'all 0.15s',
-                        }}
-                    >
-                        {isConfirming ? '套用中…' : '✓ 確認套用'}
-                    </button>
-                    <button
-                        onClick={() => onReject(id)}
-                        disabled={isConfirming || isRejecting}
-                        style={{
-                            padding: '6px 16px', borderRadius: '8px', fontSize: '13px',
-                            fontWeight: 600, border: '1px solid rgba(239,68,68,0.4)', cursor: 'pointer',
-                            background: isRejecting ? 'rgba(239,68,68,0.2)' : 'transparent',
-                            color: '#fca5a5', transition: 'all 0.15s',
-                        }}
-                    >
-                        {isRejecting ? '拒絕中…' : '✕ 拒絕'}
-                    </button>
-                </div>
-            )}
-        </div>
+        </>
     );
 }
 
 // ---------------------------------------------------------------------------
-// Main AutomationTab Component
+// Main AutomationTab — operational tool layout
 // ---------------------------------------------------------------------------
 export default function AutomationTab({ onDataChange }) {
     const [text, setText] = useState('');
@@ -218,19 +233,18 @@ export default function AutomationTab({ onDataChange }) {
     const [activeFilter, setActiveFilter] = useState('all');
     const [confirmingId, setConfirmingId] = useState(null);
     const [rejectingId, setRejectingId] = useState(null);
-    const [toastMsg, setToastMsg] = useState(null);
-    const [stats, setStats] = useState(null);
+    const [statusMsg, setStatusMsg] = useState(null); // { text, isError }
 
-    const showToast = useCallback((msg, isError = false) => {
-        setToastMsg({ msg, isError });
-        setTimeout(() => setToastMsg(null), 3500);
+    const showStatus = useCallback((text, isError = false) => {
+        setStatusMsg({ text, isError });
+        setTimeout(() => setStatusMsg(null), 4000);
     }, []);
 
     const handleIngest = useCallback(async () => {
         if (!text.trim()) return;
         setLoading(true);
         setParseErrors([]);
-        setStats(null);
+        setStatusMsg(null);
         try {
             const res = await fetch('/api/automation/ingest', {
                 method: 'POST',
@@ -244,26 +258,21 @@ export default function AutomationTab({ onDataChange }) {
             const allNew = [...data.applied, ...data.pending, ...data.rejected];
             setProposals(prev => [...allNew, ...prev]);
             setParseErrors(data.parseErrors || []);
-            setStats({
-                applied: data.applied.length,
-                pending: data.pending.length,
-                rejected: data.rejected.length,
-            });
+
+            const a = data.applied.length, p = data.pending.length, r = data.rejected.length;
+            const parts = [];
+            if (a > 0) parts.push(`${a} 筆已入帳`);
+            if (p > 0) parts.push(`${p} 筆待覆核`);
+            if (r > 0) parts.push(`${r} 筆已擋下`);
+            showStatus(parts.length > 0 ? parts.join('，') : '解析完成（無有效事件）', r > 0 && a === 0 && p === 0);
 
             if (data.applied.length > 0 && onDataChange) onDataChange();
-            if (data.applied.length > 0) {
-                showToast(`✅ 自動套用 ${data.applied.length} 筆，待確認 ${data.pending.length} 筆`);
-            } else if (data.pending.length > 0) {
-                showToast(`⏳ ${data.pending.length} 筆待確認，${data.rejected.length} 筆被擋下`);
-            } else {
-                showToast(`已解析（${allNew.length} 筆結果）`, data.rejected.length > 0);
-            }
         } catch (err) {
-            showToast(err.message, true);
+            showStatus(err.message, true);
         } finally {
             setLoading(false);
         }
-    }, [text, mode, onDataChange, showToast]);
+    }, [text, mode, onDataChange, showStatus]);
 
     const handleConfirm = useCallback(async (proposalId) => {
         setConfirmingId(proposalId);
@@ -273,18 +282,16 @@ export default function AutomationTab({ onDataChange }) {
                 credentials: 'include',
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || '套用失敗');
-            setProposals(prev => prev.map(p =>
-                p.id === proposalId ? { ...p, ...data.proposal } : p
-            ));
-            showToast('✅ 已手動確認套用');
+            if (!res.ok) throw new Error(data.error || '入帳失敗');
+            setProposals(prev => prev.map(p => p.id === proposalId ? { ...p, ...data.proposal } : p));
+            showStatus('已手動入帳');
             if (onDataChange) onDataChange();
         } catch (err) {
-            showToast(err.message, true);
+            showStatus(err.message, true);
         } finally {
             setConfirmingId(null);
         }
-    }, [onDataChange, showToast]);
+    }, [onDataChange, showStatus]);
 
     const handleReject = useCallback(async (proposalId) => {
         setRejectingId(proposalId);
@@ -293,26 +300,22 @@ export default function AutomationTab({ onDataChange }) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ reason: '使用者手動拒絕' }),
+                body: JSON.stringify({ reason: '手動拒絕' }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || '拒絕失敗');
-            setProposals(prev => prev.map(p =>
-                p.id === proposalId ? { ...p, ...data.proposal } : p
-            ));
-            showToast('拒絕已記錄');
+            setProposals(prev => prev.map(p => p.id === proposalId ? { ...p, ...data.proposal } : p));
+            showStatus('已擋下');
         } catch (err) {
-            showToast(err.message, true);
+            showStatus(err.message, true);
         } finally {
             setRejectingId(null);
         }
-    }, [showToast]);
+    }, [showStatus]);
 
-    // Filter
-    const filteredProposals = proposals.filter(p => {
-        if (activeFilter === 'all') return true;
-        return p.status === activeFilter;
-    });
+    const filteredProposals = proposals.filter(p =>
+        activeFilter === 'all' || p.status === activeFilter
+    );
 
     const counts = {
         all: proposals.length,
@@ -321,195 +324,150 @@ export default function AutomationTab({ onDataChange }) {
         rejected: proposals.filter(p => p.status === 'rejected').length,
     };
 
-    const DEMO_TEXTS = [
-        '王小明 轉 270\n幫李小明 6 月開始加 Netflix\n張大明 這個月額外收 50 網域費',
-        'Member Alpha 付了 450 塊',
-        'Beta 從下個月開始加 Spotify',
-    ];
-
     return (
-        <div style={{ maxWidth: '860px', margin: '0 auto', padding: '0 0 40px' }}>
-            {/* Toast */}
-            {toastMsg && (
-                <div style={{
-                    position: 'fixed', top: '24px', left: '50%', transform: 'translateX(-50%)',
-                    zIndex: 9999, padding: '12px 28px', borderRadius: '12px',
-                    background: toastMsg.isError ? 'rgba(239,68,68,0.92)' : 'rgba(16,185,129,0.92)',
-                    color: '#fff', fontWeight: 600, fontSize: '14px',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                    backdropFilter: 'blur(12px)',
-                    transition: 'all 0.3s',
-                }}>
-                    {toastMsg.msg}
-                </div>
-            )}
-
-            {/* Header */}
-            <div style={{ marginBottom: '24px' }}>
-                <h2 style={{
-                    fontSize: '22px', fontWeight: 700, margin: '0 0 6px',
-                    background: 'linear-gradient(90deg, #60a5fa, #a78bfa, #34d399)',
-                    WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                    backgroundClip: 'text',
-                }}>
-                    ⚡ AI 自動處理
-                </h2>
-                <p style={{ margin: 0, fontSize: '14px', color: 'rgba(255,255,255,0.5)' }}>
-                    貼入自然語言帳務紀錄，Gemini 自動解析 → 驗證 → 套用 / 待確認 / 擋下
-                </p>
-            </div>
-
-            {/* Input Area */}
+        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+            {/* ── Left Panel: Input ── */}
             <div style={{
-                background: 'linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '16px',
-                padding: '20px',
-                marginBottom: '20px',
+                flexShrink: 0,
+                width: '260px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem',
             }}>
-                <div style={{ marginBottom: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>
-                            貼入帳務文字
+                <div className="ledger-panel" style={{ padding: '1rem' }}>
+                    <div style={{ marginBottom: '0.6rem' }}>
+                        <label style={{
+                            display: 'block',
+                            fontSize: '0.7rem',
+                            fontWeight: 600,
+                            color: 'var(--text-tertiary)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                            marginBottom: '0.4rem',
+                        }}>
+                            帳務文字
                         </label>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                            {DEMO_TEXTS.map((t, i) => (
-                                <button
-                                    key={i}
-                                    onClick={() => setText(t)}
-                                    style={{
-                                        fontSize: '11px', padding: '3px 10px', borderRadius: '6px',
-                                        border: '1px solid rgba(96,165,250,0.3)',
-                                        background: 'rgba(96,165,250,0.1)', color: '#93c5fd',
-                                        cursor: 'pointer',
-                                    }}
-                                >
-                                    範例 {i + 1}
-                                </button>
-                            ))}
-                        </div>
+                        <textarea
+                            value={text}
+                            onChange={e => setText(e.target.value)}
+                            placeholder={'例如：\n王小明 轉 270\n幫李小明 6 月起加 Netflix\n張大明 額外加帳 50 網域費'}
+                            rows={6}
+                            style={{
+                                width: '100%',
+                                boxSizing: 'border-box',
+                                background: 'var(--bg-tertiary)',
+                                border: '1px solid var(--separator-opaque)',
+                                borderRadius: 'var(--radius-sm)',
+                                color: 'var(--text-primary)',
+                                padding: '8px 10px',
+                                fontSize: '0.82rem',
+                                lineHeight: 1.55,
+                                resize: 'vertical',
+                                outline: 'none',
+                                fontFamily: 'var(--font-family)',
+                            }}
+                            onFocus={e => e.target.style.borderColor = 'var(--blue)'}
+                            onBlur={e => e.target.style.borderColor = 'var(--separator-opaque)'}
+                        />
                     </div>
-                    <textarea
-                        value={text}
-                        onChange={e => setText(e.target.value)}
-                        placeholder={'貼入帳務文字，例如：\n王小明 轉 270\n幫李小明 6 月開始加 Netflix\n張大明 這個月額外收 50 網域費'}
-                        rows={5}
-                        style={{
-                            width: '100%', boxSizing: 'border-box',
-                            background: 'rgba(0,0,0,0.3)',
-                            border: '1px solid rgba(255,255,255,0.12)',
-                            borderRadius: '10px',
-                            color: '#e5e7eb',
-                            padding: '12px 14px',
-                            fontSize: '14px', lineHeight: 1.6,
-                            resize: 'vertical', outline: 'none',
-                            fontFamily: 'var(--font-mono, monospace)',
-                        }}
-                        onFocus={e => e.target.style.borderColor = 'rgba(96,165,250,0.5)'}
-                        onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.12)'}
-                    />
-                </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <label style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>模式：</label>
-                        {['auto', 'review'].map(m => (
-                            <label key={m} style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>
+                    {/* Mode selector */}
+                    <div style={{ marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {[
+                            { value: 'auto', label: '自動入帳（高信心）' },
+                            { value: 'review', label: '全部待覆核' },
+                        ].map(opt => (
+                            <label key={opt.value} style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                fontSize: '0.78rem', color: 'var(--text-secondary)', cursor: 'pointer',
+                            }}>
                                 <input
                                     type="radio"
-                                    name="mode"
-                                    value={m}
-                                    checked={mode === m}
-                                    onChange={() => setMode(m)}
-                                    style={{ accentColor: '#60a5fa' }}
+                                    name="ingest-mode"
+                                    value={opt.value}
+                                    checked={mode === opt.value}
+                                    onChange={() => setMode(opt.value)}
+                                    style={{ accentColor: 'var(--blue)' }}
                                 />
-                                {m === 'auto' ? '🤖 自動套用（高信心）' : '👁️ 全部待確認'}
+                                {opt.label}
                             </label>
                         ))}
                     </div>
+
                     <button
+                        className="btn btn-primary"
+                        style={{ width: '100%' }}
                         onClick={handleIngest}
                         disabled={loading || !text.trim()}
-                        style={{
-                            padding: '10px 28px', borderRadius: '10px', fontSize: '14px', fontWeight: 700,
-                            border: 'none', cursor: loading || !text.trim() ? 'not-allowed' : 'pointer',
-                            background: loading ? 'rgba(96,165,250,0.4)' : 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
-                            color: '#fff',
-                            boxShadow: loading ? 'none' : '0 4px 20px rgba(59,130,246,0.3)',
-                            transition: 'all 0.2s',
-                            opacity: !text.trim() ? 0.5 : 1,
-                        }}
                     >
-                        {loading ? '⚙️ 解析中…' : '⚡ 解析並處理'}
+                        {loading ? '解析中…' : '解析並入帳'}
                     </button>
                 </div>
+
+                {/* Status message */}
+                {statusMsg && (
+                    <div style={{
+                        padding: '8px 12px',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: '0.78rem',
+                        color: statusMsg.isError ? 'var(--red)' : 'var(--green)',
+                        background: statusMsg.isError ? 'var(--red-bg)' : 'var(--green-bg)',
+                        border: `1px solid ${statusMsg.isError ? 'rgba(255,59,48,0.2)' : 'rgba(52,199,89,0.2)'}`,
+                    }}>
+                        {statusMsg.text}
+                    </div>
+                )}
+
+                {/* Parse errors */}
+                {parseErrors.length > 0 && (
+                    <div style={{
+                        padding: '8px 12px',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: '0.75rem',
+                        color: 'var(--orange)',
+                        background: 'var(--orange-bg)',
+                        border: '1px solid rgba(255,149,0,0.2)',
+                    }}>
+                        <div style={{ fontWeight: 600, marginBottom: '4px' }}>解析警告</div>
+                        {parseErrors.map((e, i) => <div key={i}>· {e}</div>)}
+                    </div>
+                )}
             </div>
 
-            {/* Parse Errors */}
-            {parseErrors.length > 0 && (
-                <div style={{
-                    background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
-                    borderRadius: '10px', padding: '12px 16px', marginBottom: '16px',
-                }}>
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#fca5a5', marginBottom: '4px' }}>⚠️ 解析警告</div>
-                    {parseErrors.map((e, i) => (
-                        <div key={i} style={{ fontSize: '12px', color: '#fecaca' }}>• {e}</div>
-                    ))}
-                </div>
-            )}
-
-            {/* Stats Banner */}
-            {stats && (
-                <div style={{
-                    display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap',
-                }}>
-                    {[
-                        { label: '已自動套用', value: stats.applied, color: '#10b981' },
-                        { label: '待確認', value: stats.pending, color: '#f59e0b' },
-                        { label: '被擋下', value: stats.rejected, color: '#ef4444' },
-                    ].map(({ label, value, color }) => (
-                        <div key={label} style={{
-                            flex: 1, minWidth: '110px',
-                            background: `${color}12`,
-                            border: `1px solid ${color}30`,
-                            borderRadius: '10px', padding: '10px 14px', textAlign: 'center',
-                        }}>
-                            <div style={{ fontSize: '24px', fontWeight: 800, color }}>{value}</div>
-                            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.55)' }}>{label}</div>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {/* Inbox */}
-            {proposals.length > 0 && (
-                <>
-                    {/* Filter Tabs */}
-                    <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+            {/* ── Right Panel: Queue table ── */}
+            <div style={{ flexGrow: 1, minWidth: 0 }}>
+                {/* Filter tabs */}
+                {proposals.length > 0 && (
+                    <div style={{ display: 'flex', gap: '4px', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
                         {[
-                            { key: 'all', label: '全部', color: '#9ca3af' },
-                            { key: 'applied', label: '✅ 已套用', color: '#10b981' },
-                            { key: 'pending', label: '⏳ 待確認', color: '#f59e0b' },
-                            { key: 'rejected', label: '❌ 被擋下', color: '#ef4444' },
-                        ].map(({ key, label, color }) => {
+                            { key: 'all', label: '全部' },
+                            { key: 'applied', label: '已入帳' },
+                            { key: 'pending', label: '待覆核' },
+                            { key: 'rejected', label: '已擋下' },
+                        ].map(({ key, label }) => {
                             const isActive = activeFilter === key;
                             return (
                                 <button
                                     key={key}
                                     onClick={() => setActiveFilter(key)}
                                     style={{
-                                        padding: '6px 16px', borderRadius: '8px', fontSize: '13px',
-                                        fontWeight: isActive ? 700 : 500,
-                                        border: `1px solid ${isActive ? color : 'rgba(255,255,255,0.1)'}`,
-                                        background: isActive ? `${color}20` : 'transparent',
-                                        color: isActive ? color : 'rgba(255,255,255,0.55)',
-                                        cursor: 'pointer', transition: 'all 0.15s',
+                                        padding: '4px 12px',
+                                        borderRadius: 'var(--radius-sm)',
+                                        fontSize: '0.78rem',
+                                        fontWeight: isActive ? 600 : 400,
+                                        border: '1px solid',
+                                        borderColor: isActive ? 'var(--blue)' : 'var(--separator-opaque)',
+                                        background: isActive ? 'var(--blue-bg)' : 'var(--bg-tertiary)',
+                                        color: isActive ? 'var(--blue)' : 'var(--text-secondary)',
+                                        cursor: 'pointer',
+                                        transition: 'var(--transition)',
                                     }}
                                 >
-                                    {label} {counts[key] > 0 && (
+                                    {label}
+                                    {counts[key] > 0 && (
                                         <span style={{
-                                            marginLeft: '4px', background: `${color}30`,
-                                            borderRadius: '999px', padding: '1px 7px', fontSize: '11px',
+                                            marginLeft: '4px', fontSize: '0.68rem',
+                                            color: isActive ? 'var(--blue)' : 'var(--text-tertiary)',
                                         }}>
                                             {counts[key]}
                                         </span>
@@ -518,57 +476,59 @@ export default function AutomationTab({ onDataChange }) {
                             );
                         })}
                     </div>
+                )}
 
-                    {/* Proposal List */}
-                    {filteredProposals.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '32px', color: 'rgba(255,255,255,0.3)', fontSize: '14px' }}>
-                            此分類目前無 proposals
-                        </div>
-                    ) : (
-                        filteredProposals.map(p => (
-                            <ProposalCard
-                                key={p.id}
-                                proposal={p}
-                                onConfirm={handleConfirm}
-                                onReject={handleReject}
-                                confirmingId={confirmingId}
-                                rejectingId={rejectingId}
-                            />
-                        ))
-                    )}
-                </>
-            )}
-
-            {/* Empty State */}
-            {proposals.length === 0 && !loading && (
-                <div style={{
-                    textAlign: 'center', padding: '60px 20px',
-                    color: 'rgba(255,255,255,0.25)', fontSize: '15px',
-                }}>
-                    <div style={{ fontSize: '48px', marginBottom: '12px' }}>⚡</div>
-                    <div>貼入帳務文字，AI 自動解析並分類</div>
-                    <div style={{ fontSize: '12px', marginTop: '8px', opacity: 0.7 }}>
-                        支援付款、訂閱、臨時加帳，可同時處理多筆
+                {/* Proposal table */}
+                {filteredProposals.length > 0 ? (
+                    <div className="table-container" style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid var(--separator-opaque)' }}>
+                                    {['類型', '說明', '信心', '狀態', 'Ledger / 操作'].map(h => (
+                                        <th key={h} style={{
+                                            padding: '6px 10px',
+                                            textAlign: h === '信心' ? 'right' : 'left',
+                                            fontSize: '0.7rem',
+                                            fontWeight: 600,
+                                            color: 'var(--text-tertiary)',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.04em',
+                                            whiteSpace: 'nowrap',
+                                        }}>
+                                            {h}
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredProposals.map(p => (
+                                    <ProposalRow
+                                        key={p.id}
+                                        proposal={p}
+                                        onConfirm={handleConfirm}
+                                        onReject={handleReject}
+                                        confirmingId={confirmingId}
+                                        rejectingId={rejectingId}
+                                    />
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-                </div>
-            )}
-
-            {/* GenAI Tech Note (for demo context) */}
-            <div style={{
-                marginTop: '40px',
-                background: 'linear-gradient(135deg, rgba(96,165,250,0.06), rgba(167,139,250,0.06))',
-                border: '1px solid rgba(96,165,250,0.15)',
-                borderRadius: '12px', padding: '16px 20px',
-            }}>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: '#93c5fd', marginBottom: '8px', letterSpacing: '0.05em' }}>
-                    🔬 GenAI 技術架構
-                </div>
-                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', lineHeight: 1.7 }}>
-                    <strong style={{ color: 'rgba(255,255,255,0.65)' }}>Gemini function calling</strong> 解析文字 →{' '}
-                    <strong style={{ color: 'rgba(255,255,255,0.65)' }}>Deterministic 驗證層</strong>（重複檢查、成員匹配、格式驗證）→{' '}
-                    <strong style={{ color: 'rgba(255,255,255,0.65)' }}>信心分數分類</strong>（≥90% 自動套用）→{' '}
-                    所有寫入走既有 <strong style={{ color: 'rgba(255,255,255,0.65)' }}>SQLite + Ledger + RAG invalidation</strong> 鏈
-                </div>
+                ) : proposals.length === 0 ? (
+                    /* Empty state */
+                    <div className="table-container" style={{ padding: '2.5rem', textAlign: 'center' }}>
+                        <p style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>
+                            輸入帳務文字後，AI 解析結果會在此顯示
+                        </p>
+                        <p style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem', marginTop: '0.5rem' }}>
+                            信心 ≥ 90% 且通過驗證的紀錄會自動入帳；其餘進待覆核佇列
+                        </p>
+                    </div>
+                ) : (
+                    <div className="table-container" style={{ padding: '1.5rem', textAlign: 'center' }}>
+                        <p style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>此篩選條件無資料</p>
+                    </div>
+                )}
             </div>
         </div>
     );

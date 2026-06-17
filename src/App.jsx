@@ -101,6 +101,7 @@ function App() {
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiReminders, setAiReminders] = useState({}); // mapping: memberId -> { text, loading, style }
+  const [lifecycleStatus, setLifecycleStatus] = useState(null);
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -247,6 +248,10 @@ function App() {
       }
       const json = await res.json();
       syncClientStateFromDb(json, { keepSelectedHistory: true });
+      // Fetch lifecycle status in parallel (non-blocking)
+      apiFetch('/lifecycle/status').then(r => r.json()).then(lc => {
+        if (lc.success) setLifecycleStatus(lc);
+      }).catch(() => {});
     } catch (err) {
       if (err.code === 'AUTH_REQUIRED') return;
       console.error("Error loading data:", err);
@@ -1327,7 +1332,7 @@ function App() {
     { id: 'subscriptions', code: '👥', label: '訂閱名額' },
     { id: 'config', code: '⚙️', label: '設定' },
     { id: 'history', code: '📋', label: '歷史紀錄' },
-    { id: 'automation', code: '⚡', label: '自動處理' },
+    { id: 'automation', code: '✏️', label: 'AI 入帳' },
     { id: 'ai-assistant', code: '✨', label: 'AI 助理' }
   ];
   const tabMeta = {
@@ -1357,9 +1362,9 @@ function App() {
       description: '透過對話查詢帳務資料與分析。'
     },
     automation: {
-      kicker: 'GenAI Demo',
-      title: '⚡ AI 自動處理',
-      description: '貼入自然語言帳務文字，Gemini 解析 → 驗證 → 自動套用或待確認。'
+      kicker: '',
+      title: 'AI 入帳',
+      description: '輸入或貼入帳務文字，AI 解析後進入入帳佇列；信心不足或未能匹配的紀錄進待覆核。'
     }
   };
   const activeTabMeta = tabMeta[activeTab] || tabMeta.dashboard;
@@ -1436,11 +1441,6 @@ function App() {
               <span className="month-badge-label">Active month</span>
               <strong>{data.currentMonth}</strong>
             </div>
-            {activeTab === 'dashboard' && (
-              <button className="btn btn-primary" style={{ padding: '0.65rem 1.25rem' }} onClick={openSettleModal}>
-                啟動月結預檢
-              </button>
-            )}
           </div>
         </header>
 
@@ -1464,9 +1464,16 @@ function App() {
                     </button>
                   </>
                 ) : (
-                  <button className="btn btn-primary" onClick={openSettleModal}>
-                    開啟月結控制
-                  </button>
+                  <>
+                    {lifecycleStatus && (
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                        帳期{lifecycleStatus.isCurrent ? '已是最新' : '待更新'}
+                        {lifecycleStatus.lastAdvancedAt && (
+                          <> · 上次推進 {new Date(lifecycleStatus.lastAdvancedAt).toLocaleDateString('zh-TW')}</>
+                        )}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -2203,6 +2210,56 @@ function App() {
                       </div>
                     )}
                   </div>
+                )}
+              </div>
+
+              {/* Billing Period Management */}
+              <div className="table-container" style={{ padding: '1.25rem', marginBottom: '0' }}>
+                <h3 style={{ marginBottom: '0.75rem', fontSize: '1rem', fontWeight: 600 }}>帳期管理</h3>
+                {lifecycleStatus ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem 1rem', fontSize: '0.82rem' }}>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: '0.7rem', display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>目前帳期</span>
+                        <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{lifecycleStatus.currentMonth}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: '0.7rem', display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>系統月份（台北）</span>
+                        <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{lifecycleStatus.systemMonth}</strong>
+                        {' '}<span style={{ fontSize: '0.72rem', color: lifecycleStatus.isCurrent ? 'var(--green)' : 'var(--orange)' }}>
+                          {lifecycleStatus.isCurrent ? '● 已同步' : '● 待更新'}
+                        </span>
+                      </div>
+                      {lifecycleStatus.lastAdvancedAt && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <span style={{ color: 'var(--text-tertiary)', fontSize: '0.7rem', display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>上次自動推進</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>
+                            {lifecycleStatus.lastAdvancedFrom} → {lifecycleStatus.lastAdvancedTo}
+                            {' '}·{' '}{new Date(lifecycleStatus.lastAdvancedAt).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}
+                          </span>
+                        </div>
+                      )}
+                      {lifecycleStatus.blockedReason && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--red)', background: 'var(--red-bg)', padding: '4px 8px', borderRadius: 'var(--radius-sm)', display: 'block' }}>
+                            ⚠ {lifecycleStatus.blockedReason}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--separator)' }}>
+                      <p style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginBottom: '0.5rem' }}>進階操作：手動強制月結（通常由系統自動處理）</p>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem' }}
+                        onClick={openSettleModal}
+                      >
+                        月結控制台
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>載入帳期狀態中…</p>
                 )}
               </div>
 

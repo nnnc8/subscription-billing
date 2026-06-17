@@ -48,6 +48,7 @@ import { generateAIReminder } from './lib/ai-reminder.js';
 import { handleAssistantChat } from './lib/ai-assistant.js';
 import { invalidateRAGIndex, queryRAG } from './lib/rag.js';
 import { parseAndClassifyProposals, applyProposal } from './lib/automation.js';
+import { runLifecycleCatchUp, getLifecycleStatus } from './lib/lifecycle.js';
 import type { Database, LedgerEvent, Payment, TempCharge, Member, Platform, Subscription, AutomationProposal } from './src/types/billing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -230,6 +231,26 @@ if (isCloudBinding() && !isAuthConfigured()) {
 }
 
 bootstrapDataFiles();
+
+// ---------------------------------------------------------------------------
+// Startup lifecycle catch-up
+// (catches months missed while server was offline)
+// ---------------------------------------------------------------------------
+try {
+    const startupDb = readDB();
+    if (startupDb) {
+        const startupResults = runLifecycleCatchUp(startupDb);
+        if (startupResults.some(r => r.advanced)) {
+            if (writeDB(startupDb)) {
+                invalidateRAGIndex();
+                console.log(`[lifecycle] startup catch-up: advanced ${startupResults.filter(r => r.advanced).length} month(s) to ${startupDb.currentMonth}`);
+            }
+        }
+    }
+} catch (err) {
+    console.error('[lifecycle] startup catch-up error:', err);
+}
+
 app.use(applyCors);
 app.use(express.json());
 
@@ -678,6 +699,20 @@ app.get('/api/data', (req: Request, res: Response) => {
         res.status(500).json({ error: 'Failed to read database' });
         return;
     }
+
+    // Per-request lifecycle check — advances month if Taipei date has changed
+    try {
+        const lcResults = runLifecycleCatchUp(db);
+        if (lcResults.some(r => r.advanced)) {
+            if (writeDB(db)) {
+                invalidateRAGIndex();
+            }
+        }
+    } catch (err) {
+        // Non-fatal: log and continue — don't fail /api/data over lifecycle
+        console.error('[lifecycle] /api/data catch-up error:', err);
+    }
+
     res.json(withAudit(db));
 });
 
@@ -1272,6 +1307,14 @@ app.get('/api/audit', (req: Request, res: Response) => {
         warnings: findAccountingWarnings(db),
         ledger: getLedgerSummary(db)
     });
+});
+
+
+app.get('/api/lifecycle/status', (req: Request, res: Response) => {
+    const db = readDB();
+    if (!db) { res.status(500).json({ error: 'Database error' }); return; }
+    const status = getLifecycleStatus(db);
+    res.json({ success: true, ...status });
 });
 
 app.get('/api/ledger', (req: Request, res: Response) => {

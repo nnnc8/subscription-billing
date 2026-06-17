@@ -115,6 +115,26 @@ export interface Ledger {
   updatedAt: string
 }
 
+export interface LifecycleMetadata {
+  timezone: string                  // e.g. 'Asia/Taipei'
+  autoAdvanceEnabled: boolean
+  lastCheckedAt: string | null      // ISO 8601
+  lastAdvancedAt: string | null     // ISO 8601
+  lastAdvancedFrom: string | null   // YYYY/MM
+  lastAdvancedTo: string | null     // YYYY/MM
+}
+
+export interface LifecycleStatus {
+  currentMonth: string              // db.currentMonth
+  systemMonth: string               // Taipei real month
+  isCurrent: boolean                // currentMonth === systemMonth
+  timezone: string
+  lastAdvancedAt: string | null
+  lastAdvancedFrom: string | null
+  lastAdvancedTo: string | null
+  blockedReason: string | null
+}
+
 export interface Database {
   currentMonth: string
   baseMonth: string
@@ -127,6 +147,7 @@ export interface Database {
   history: HistoryEntry[]
   reminderStyle: string
   ledger: Ledger
+  lifecycle?: LifecycleMetadata
   [key: string]: unknown
 }
 
