@@ -47,7 +47,8 @@ import {
 import { generateAIReminder } from './lib/ai-reminder.js';
 import { handleAssistantChat } from './lib/ai-assistant.js';
 import { invalidateRAGIndex, queryRAG } from './lib/rag.js';
-import type { Database, LedgerEvent, Payment, TempCharge, Member, Platform, Subscription } from './src/types/billing.js';
+import { parseAndClassifyProposals, applyProposal } from './lib/automation.js';
+import type { Database, LedgerEvent, Payment, TempCharge, Member, Platform, Subscription, AutomationProposal } from './src/types/billing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 loadLocalEnv({ cwd: __dirname });
@@ -231,6 +232,11 @@ if (isCloudBinding() && !isAuthConfigured()) {
 bootstrapDataFiles();
 app.use(applyCors);
 app.use(express.json());
+
+// ---------------------------------------------------------------------------
+// In-memory Automation Inbox (session-scoped; applied events are in ledger)
+// ---------------------------------------------------------------------------
+const automationInbox: AutomationProposal[] = [];
 
 app.use(express.static(path.join(__dirname, 'dist')));
 
@@ -1414,6 +1420,142 @@ app.post('/api/ai/rag-search', async (req: Request, res: Response) => {
         console.error('Error in RAG search route:', err);
         res.status(500).json({ error: (err as Error).message || 'RAG 搜索失敗' });
     }
+});
+
+// ---------------------------------------------------------------------------
+// Automation Routes (GenAI Demo)
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/automation/ingest
+ * Body: { text: string, mode?: "auto" | "review" }
+ * Returns: { applied, pending, rejected, parseErrors }
+ *
+ * AI parses the natural language text into structured proposals.
+ * Only proposals with confidence >= 0.9 + passing deterministic checks
+ * are auto-applied. All others go to pending (never silently dropped).
+ */
+app.post('/api/automation/ingest', async (req: Request, res: Response) => {
+    const { text, mode } = req.body as { text?: string; mode?: string };
+    if (!text || typeof text !== 'string' || !text.trim()) {
+        res.status(400).json({ error: '缺少輸入文字' });
+        return;
+    }
+
+    const db = readDB();
+    if (!db) {
+        res.status(500).json({ error: 'Database error' });
+        return;
+    }
+
+    const apiKey = process.env.GOOGLE_GEMINI_API_KEY || '';
+    try {
+        const ingestMode = (mode === 'review' ? 'review' : 'auto') as 'auto' | 'review';
+        const result = await parseAndClassifyProposals(text.trim(), db, apiKey, ingestMode);
+
+        // If anything was auto-applied, persist to DB
+        if (result.applied.length > 0) {
+            if (!writeDB(db)) {
+                res.status(500).json({ error: 'AI 解析成功但資料寫入失敗' });
+                return;
+            }
+            invalidateRAGIndex();
+        }
+
+        // Store all proposals in the session inbox
+        automationInbox.push(...result.applied, ...result.pending, ...result.rejected);
+
+        res.json({
+            success: true,
+            applied: result.applied,
+            pending: result.pending,
+            rejected: result.rejected,
+            parseErrors: result.parseErrors,
+        });
+    } catch (err) {
+        console.error('[Automation] ingest error:', err);
+        res.status(500).json({ error: (err as Error).message || 'AI 解析失敗' });
+    }
+});
+
+/**
+ * GET /api/automation/inbox
+ * Returns all proposals stored in the session inbox.
+ */
+app.get('/api/automation/inbox', (req: Request, res: Response) => {
+    res.json({ success: true, proposals: automationInbox });
+});
+
+/**
+ * POST /api/automation/confirm/:id
+ * Manually confirms a pending proposal → applies it to DB.
+ */
+app.post('/api/automation/confirm/:id', (req: Request, res: Response) => {
+    const proposalId = req.params.id;
+    const proposal = automationInbox.find(p => p.id === proposalId);
+
+    if (!proposal) {
+        res.status(404).json({ error: '找不到該 proposal' });
+        return;
+    }
+    if (proposal.status !== 'pending') {
+        res.status(409).json({ error: `Proposal 狀態為 ${proposal.status}，無法再確認` });
+        return;
+    }
+
+    const db = readDB();
+    if (!db) {
+        res.status(500).json({ error: 'Database error' });
+        return;
+    }
+
+    const applyResult = applyProposal(proposal, db);
+    if (!applyResult.ok) {
+        res.status(400).json({ error: applyResult.error || '套用失敗' });
+        return;
+    }
+
+    proposal.status = 'applied';
+    proposal.appliedAt = new Date().toISOString();
+    proposal.ledgerEventId = applyResult.ledgerEventId;
+
+    if (!writeDB(db)) {
+        // Revert in-memory status on write failure
+        proposal.status = 'pending';
+        proposal.appliedAt = undefined;
+        proposal.ledgerEventId = undefined;
+        res.status(500).json({ error: '資料寫入失敗' });
+        return;
+    }
+    invalidateRAGIndex();
+
+    sendDB(res, db, { proposal });
+});
+
+/**
+ * POST /api/automation/reject/:id
+ * Manually rejects a pending proposal.
+ */
+app.post('/api/automation/reject/:id', (req: Request, res: Response) => {
+    const proposalId = req.params.id;
+    const proposal = automationInbox.find(p => p.id === proposalId);
+
+    if (!proposal) {
+        res.status(404).json({ error: '找不到該 proposal' });
+        return;
+    }
+    if (proposal.status !== 'pending') {
+        res.status(409).json({ error: `Proposal 狀態為 ${proposal.status}，無法拒絕` });
+        return;
+    }
+
+    const { reason } = req.body as { reason?: string };
+    proposal.status = 'rejected';
+    proposal.rejectedAt = new Date().toISOString();
+    proposal.rejectedBy = 'manual';
+    proposal.rejectReason = reason || '使用者手動拒絕';
+
+    res.json({ success: true, proposal });
 });
 
 app.post('/api/ai/chat-legacy', async (req: Request, res: Response) => {

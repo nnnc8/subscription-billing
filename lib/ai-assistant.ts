@@ -101,6 +101,45 @@ const tools: Array<{
                 properties: {}
             }
         }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'get_subscription_impact',
+            description: '查詢新增或變更某平台訂閱後，會影響哪些成員的費用以及費用如何變化。適合回答「新增訂閱影響誰」等問題。',
+            parameters: {
+                type: 'object',
+                properties: {
+                    platformName: {
+                        type: 'string',
+                        description: '平台名稱（例如：Netflix、Spotify）'
+                    }
+                },
+                required: ['platformName']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'get_collection_priority',
+            description: '取得本期催繳優先順序：依「應收金額高低」及「距上次付款天數」排序，告訴主辦人該先催誰。',
+            parameters: {
+                type: 'object',
+                properties: {}
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'get_month_close_checklist',
+            description: '取得月底關帳完整 checklist，包含誰還未付、有沒有 pending proposals 待確認、帳務警告摘要等。',
+            parameters: {
+                type: 'object',
+                properties: {}
+            }
+        }
     }
 ];
 
@@ -380,6 +419,92 @@ function executeTool(db: Database, name: string, args: Record<string, string>): 
                 const preview = getClosePreview(db);
                 return JSON.stringify({ preview });
             }
+            case 'get_subscription_impact': {
+                const targetPlatform = db.platforms.find(
+                    p => p.name === args.platformName ||
+                         p.name.toLowerCase().includes((args.platformName || '').toLowerCase())
+                );
+                if (!targetPlatform) {
+                    return JSON.stringify({ error: `找不到平台 "${args.platformName}"` });
+                }
+                const activeSubs = (db.subscriptions || []).filter(
+                    s => (s.platformId === targetPlatform.id || s.platformName === targetPlatform.name) &&
+                         !s.exitMonth
+                );
+                const affectedMembers = activeSubs.map(s => {
+                    const member = db.members.find(m => m.id === s.memberId || m.name === s.memberName);
+                    return {
+                        memberName: s.memberName,
+                        startMonth: s.startMonth,
+                        seatLabel: s.seatLabel || null,
+                        customFee: member?.customFee ?? null,
+                    };
+                });
+                return JSON.stringify({
+                    platformName: targetPlatform.name,
+                    billingMode: targetPlatform.billingMode,
+                    price: targetPlatform.price,
+                    totalCost: targetPlatform.totalCost,
+                    activeSubscribersCount: activeSubs.length,
+                    affectedMembers,
+                    note: targetPlatform.billingMode === 'split'
+                        ? `平台費用 $${targetPlatform.totalCost} 由 ${activeSubs.length} 人均攤，若再加人每人費用會下降`
+                        : `固定每人 $${targetPlatform.price}/月`,
+                });
+            }
+            case 'get_collection_priority': {
+                const balances = calculateCurrentMonthBalances(db);
+                const now = Date.now();
+                const prioritized = balances
+                    .filter(b => b.endingBalance > 0)
+                    .map(b => {
+                        const memberPayments = (db.payments || [])
+                            .filter(p => p.memberName === b.memberName && !p.status?.includes('voided'))
+                            .sort((a, c) => new Date(c.date).getTime() - new Date(a.date).getTime());
+                        const lastPayment = memberPayments[0];
+                        const daysSinceLastPayment = lastPayment
+                            ? Math.floor((now - new Date(lastPayment.date).getTime()) / 86400000)
+                            : 999;
+                        return {
+                            memberName: b.memberName,
+                            outstanding: b.endingBalance,
+                            lastPaymentDate: lastPayment?.date || null,
+                            daysSinceLastPayment,
+                            urgency: b.endingBalance > 500 || daysSinceLastPayment > 30 ? '高' : '中',
+                        };
+                    })
+                    .sort((a, c) => {
+                        // Primary: urgency high first; secondary: outstanding amount desc
+                        if (a.urgency !== c.urgency) return a.urgency === '高' ? -1 : 1;
+                        return c.outstanding - a.outstanding;
+                    });
+                return JSON.stringify({
+                    currentMonth: db.currentMonth,
+                    unpaidCount: prioritized.length,
+                    priority: prioritized,
+                });
+            }
+            case 'get_month_close_checklist': {
+                const preview = getClosePreview(db);
+                const warnings = findAccountingWarnings(db);
+                const unpaidMembers = preview.balances.filter(b => b.endingBalance > 0);
+                return JSON.stringify({
+                    currentMonth: db.currentMonth,
+                    readyToClose: preview.ready,
+                    blockers: preview.blockers,
+                    unpaidMembers: unpaidMembers.map(b => ({
+                        name: b.memberName,
+                        outstanding: b.endingBalance,
+                    })),
+                    unpaidCount: unpaidMembers.length,
+                    totalReceivable: preview.totals.receivable,
+                    warningCount: warnings.length,
+                    checks: preview.checks,
+                    note: preview.ready
+                        ? '所有條件滿足，可以執行月結'
+                        : `尚有 ${preview.blockers.length} 個阻擋項目需要解決`,
+                });
+            }
             default:
                 return JSON.stringify({ error: `未知的工具名稱: ${name}` });
         }
@@ -420,10 +545,16 @@ export async function handleAssistantChat(db: Database, userMessage: string, his
 5. 一律使用繁體中文 (zh-TW) 回覆，並適度使用條列式、表格或粗體，讓財務報表和對帳明細更容易被操作者閱讀。
 6. 當前帳期（當前月份）為: ${db.currentMonth}。
 
+【AI 自動化處理】：
+本系統支援「⚡ 自動處理」功能：使用者可貼上自然語言帳務文字，系統以 Gemini function calling 解析成結構化 proposal，再透過 deterministic 驗證層（重複檢查、金額格式、成員匹配）決定是否自動套用。
+若使用者詢問「剛才自動套用了什麼」、「最近 AI 處理了哪些事件」，請引用系統審計日誌（get_system_snapshot 或 RAG 中的 ledger 紀錄）來回答，並標示 [AI自動] 前綴的事件。
+
 【工具呼叫限制】：
 - 如果你想查詢某個成員，但使用者只給了簡稱（如 "Alpha" 代替 "Member Alpha"），你依然可以直接將 "Alpha" 傳入 get_member_balance 等工具，工具會進行模糊比對。
+- 使用 get_subscription_impact 回答「新增 X 訂閱影響誰」類問題。
+- 使用 get_collection_priority 回答「誰該優先催繳」類問題。
+- 使用 get_month_close_checklist 回答「月底關帳還差什麼」類問題。
 ${ragSystemContent}`;
-
     const messages: AssistantMessage[] = [
         { role: 'system', content: systemMessage },
         ...history,

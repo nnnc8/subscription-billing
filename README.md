@@ -21,6 +21,7 @@ Manage members, track payments, generate invoices, and reconcile accounts — al
 - 👥 **Member Management** — Add, archive, and track subscription members with per-member pricing
 - 💳 **Payment Recording** — Log payments with duplicate detection, void support, and full audit trail
 - 📋 **Monthly Settlement** — Automated month-close with balance carryover and readiness checks
+- ⚡ **AI Automation Inbox** — Paste natural language text; Gemini parses → validates → auto-applies or queues for review
 - 🤖 **AI Assistant** — Natural language billing queries powered by Google Gemini with function calling
 - 🔍 **RAG Search** — Vector-indexed transaction history for context-aware AI responses
 - ✉️ **Invoice Generation** — AI-generated payment reminders in 5 tones (friendly, formal, pirate, poetic, urgent)
@@ -136,10 +137,15 @@ subscription-billing/
 ├── server.ts                # Express API server
 ├── src/
 │   ├── App.jsx              # Main React application
-│   ├── components/          # React components (tsx)
+│   ├── components/
+│   │   ├── AutomationTab.jsx    # ⚡ AI Automation Inbox UI
+│   │   ├── AiAssistantTab.tsx   # AI chat assistant
+│   │   ├── HistoryTab.tsx
+│   │   └── SubscriptionsTab.tsx
 │   ├── types/               # TypeScript type definitions
 │   └── index.css            # Design system
 ├── lib/
+│   ├── automation.ts        # ⚡ AI parsing + validation + apply logic
 │   ├── accounting.ts        # Accounting engine & ledger
 │   ├── ai.ts                # Gemini AI client
 │   ├── ai-assistant.ts      # Function-calling chat agent
@@ -148,7 +154,11 @@ subscription-billing/
 │   ├── db.ts                # SQLite database layer
 │   ├── auth.ts              # Session & cookie auth
 │   └── google-oauth.ts      # OAuth flow handler
-├── tests/                   # Vitest test suites
+├── tests/
+│   ├── automation.test.ts   # ⚡ Automation pipeline tests
+│   ├── accounting.test.ts
+│   ├── portability.test.ts
+│   └── privacy.test.ts
 ├── docs/                    # Documentation
 ├── Dockerfile               # Multi-stage container build
 └── docker-compose.yml       # Container orchestration
@@ -195,6 +205,10 @@ pnpm run launchd:uninstall  # Remove service
 | `POST` | `/api/settle` | Execute monthly settlement |
 | `POST` | `/api/ai/chat` | AI assistant conversation |
 | `POST` | `/api/ai/generate-reminder` | Generate invoice text |
+| `POST` | `/api/automation/ingest` | ⚡ Parse natural language → proposals |
+| `GET` | `/api/automation/inbox` | List session proposals |
+| `POST` | `/api/automation/confirm/:id` | Apply a pending proposal |
+| `POST` | `/api/automation/reject/:id` | Reject a pending proposal |
 | `GET` | `/api/backups` | List backup snapshots |
 | `POST` | `/api/backups/create` | Create backup |
 | `POST` | `/api/backups/restore` | Restore from backup |
@@ -209,3 +223,98 @@ pnpm run launchd:uninstall  # Remove service
 ## License
 
 MIT © 2026
+
+---
+
+## 🎯 Tagtoo GenAI Demo（3 分鐘展示流程）
+
+> 本節說明如何在 3 分鐘內展示本系統的 GenAI 工程能力，對應 Tagtoo 生成式 AI 實習生職缺關鍵技術。
+
+### 技術關鍵字對應
+
+| Tagtoo JD 關鍵字 | 本系統對應實作 |
+|---|---|
+| 生成式 AI / LLM | Gemini 2.0 Flash — 多輪對話、function calling |
+| RAG | `lib/rag.ts` — 向量嵌入 + cosine 相似度索引 |
+| 自動化流程 | `lib/automation.ts` — AI 解析 → 驗證 → 受控寫入 |
+| 資料應用 | SQLite WAL + 帳務引擎 + ledger hash chain |
+| GitHub | [nnnc8/subscription-billing](https://github.com/nnnc8/subscription-billing) |
+| GCP / Gemini | `GOOGLE_GEMINI_API_KEY` + AI Studio / Vertex AI fallback |
+| AI-assisted development | 所有 AI 操作均有 deterministic validation 守門 |
+
+---
+
+### Step 1 — RAG + Function Calling 查詢（~60s）
+
+在左側切換到 **✨ AI 助理**，輸入：
+
+```
+誰這個月還沒繳錢？請幫我列出優先催繳順序。
+```
+
+系統行為：
+1. **RAG 檢索**：將問題轉成向量，比對付款/訂閱/帳務歷史塊
+2. **Gemini function calling**：呼叫 `get_collection_priority` tool
+3. **Markdown table 回傳**：顯示應收金額排序、距上次付款天數、緊急度
+
+---
+
+### Step 2 — AI 自動化處理（~90s）
+
+切換到 **⚡ 自動處理**，點「範例 1」或手動貼入：
+
+```
+王小明 轉 270
+幫李小明 6 月開始加 Netflix
+張大明 這個月額外收 50 網域費
+```
+
+系統行為：
+1. **Gemini function calling**：解析成 3 筆 `AutomationProposal`（付款 / 訂閱 / 加帳）
+2. **Deterministic 驗證**：查 member 是否存在、金額格式、`findRecentDuplicateTransaction`
+3. **分類**：
+   - 信心 ≥ 0.9 且驗證通過 → **自動套用**（寫入 SQLite + ledger + RAG invalidation）
+   - 信心 < 0.9 或有 warning → **待確認**（Inbox 顯示，等人工確認）
+   - 驗證失敗 → **被擋下**（不靜默丟棄，顯示原因）
+4. **Inbox 即時更新**：綠色已套用 / 黃色待確認 / 紅色被擋下，每筆顯示 ledger event ID
+
+---
+
+### Step 3 — 稽核說明（~30s）
+
+回到 **✨ AI 助理**，輸入：
+
+```
+剛才自動套用的事件，帳務都對了嗎？月底關帳還差什麼？
+```
+
+AI 呼叫 `get_month_close_checklist`，回傳：
+- 未付成員列表
+- 最近 `[AI自動]` 前綴的 ledger events
+- 關帳 blockers / 通過項目
+
+---
+
+### 架構亮點（可在面試中說明）
+
+```
+User 貼文字
+    │
+    ▼
+POST /api/automation/ingest
+    │
+    ├─ Gemini function calling (record_billing_events tool)
+    │      └─ 回傳 structured proposals (JSON)
+    │
+    ├─ Deterministic Validator
+    │      ├─ member lookup (唯一匹配，不靠 AI 決定)
+    │      ├─ findRecentDuplicateTransaction()
+    │      └─ amount / date / month 格式驗證
+    │
+    └─ Classifier (confidence >= 0.9 + 無 warnings)
+           ├─ apply → writeDB() + appendLedgerEvent() + invalidateRAGIndex()
+           ├─ pending → Inbox 待人工確認
+           └─ rejected → 顯示原因，不靜默丟棄
+```
+
+> **設計原則**：AI 是解析 oracle，不是可信寫入者。所有真實 DB 操作都通過 deterministic 守門層。

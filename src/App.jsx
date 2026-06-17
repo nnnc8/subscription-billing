@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { HistoryTab } from './components/HistoryTab';
 import { SubscriptionsTab } from './components/SubscriptionsTab';
 import { AiAssistantTab } from './components/AiAssistantTab';
+import AutomationTab from './components/AutomationTab';
 
 // Vite dev server has a proxy that forwards /api -> http://127.0.0.1:3000
 // so cookies are always same-origin regardless of dev vs. production.
@@ -1326,6 +1327,7 @@ function App() {
     { id: 'subscriptions', code: '👥', label: '訂閱名額' },
     { id: 'config', code: '⚙️', label: '設定' },
     { id: 'history', code: '📋', label: '歷史紀錄' },
+    { id: 'automation', code: '⚡', label: '自動處理' },
     { id: 'ai-assistant', code: '✨', label: 'AI 助理' }
   ];
   const tabMeta = {
@@ -1353,6 +1355,11 @@ function App() {
       kicker: '',
       title: 'AI 助理',
       description: '透過對話查詢帳務資料與分析。'
+    },
+    automation: {
+      kicker: 'GenAI Demo',
+      title: '⚡ AI 自動處理',
+      description: '貼入自然語言帳務文字，Gemini 解析 → 驗證 → 自動套用或待確認。'
     }
   };
   const activeTabMeta = tabMeta[activeTab] || tabMeta.dashboard;
@@ -2291,6 +2298,11 @@ function App() {
             aiLoading={aiLoading}
             handleSendChatMessage={handleSendChatMessage}
           />
+        )}
+
+        {/* Automation Tab */}
+        {activeTab === 'automation' && (
+          <AutomationTab onDataChange={fetchData} />
         )}
       </main>
 

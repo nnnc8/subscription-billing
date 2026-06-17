@@ -328,3 +328,34 @@ export interface SessionVerificationResult {
 }
 
 export type ReminderStyle = 'friendly' | 'professional' | 'pirate' | 'poetic' | 'urgent' | 'minimal'
+
+// ---------------------------------------------------------------------------
+// Automation Inbox (GenAI Demo)
+// ---------------------------------------------------------------------------
+
+export type ProposalKind = 'payment' | 'subscription' | 'tempCharge'
+export type ProposalStatus = 'applied' | 'pending' | 'rejected'
+
+export interface AutomationProposal {
+  id: string
+  kind: ProposalKind
+  sourceText: string
+  confidence: number          // 0–1, as parsed by Gemini
+  reason: string              // AI 解析理由
+  warnings: string[]          // 潛在風險說明 (deterministic layer)
+  payload: Record<string, unknown>  // 對應既有 API 欄位
+  status: ProposalStatus
+  createdAt: string
+  appliedAt?: string
+  rejectedAt?: string
+  rejectedBy?: string
+  rejectReason?: string
+  ledgerEventId?: string      // 套用後對應的 ledger event id
+}
+
+export interface AutomationIngestResult {
+  applied: AutomationProposal[]
+  pending: AutomationProposal[]
+  rejected: AutomationProposal[]
+  parseErrors: string[]
+}
