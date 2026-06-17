@@ -37,8 +37,8 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
       {/* Quick allocation form */}
       <div className="table-container" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
         <h3 style={{ marginBottom: '1.25rem', fontSize: '1.1rem', fontWeight: '600' }}>建立名額配置</h3>
-        <form onSubmit={handleAddSubscription} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div className="form-group" style={{ flexGrow: 1, minWidth: '150px' }}>
+        <form onSubmit={handleAddSubscription} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', alignItems: 'end' }}>
+          <div className="form-group">
             <label>選擇成員姓名</label>
             <select className="form-control" value={subName} onChange={(e) => setSubName(e.target.value)}>
               <option value="">-- 請選擇 --</option>
@@ -48,7 +48,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
             </select>
           </div>
           
-          <div className="form-group" style={{ flexGrow: 1, minWidth: '150px' }}>
+          <div className="form-group">
             <label>訂閱平台</label>
             <select className="form-control" value={effectiveSubPlatform} onChange={(e) => setSubPlatform(e.target.value)}>
               {activePlatforms.map(p => (
@@ -58,12 +58,12 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
             </select>
           </div>
 
-          <div className="form-group" style={{ width: '150px' }}>
+          <div className="form-group">
             <label>起算月份 (YYYY/MM)</label>
             <input type="text" className="form-control" placeholder="如 2026/05" value={subStart} onChange={(e) => setSubStart(e.target.value)} />
           </div>
 
-          <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem 1.5rem' }}>寫入配置</button>
+          <button type="submit" className="btn btn-primary" style={{ padding: '0.65rem 1.5rem', height: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>寫入配置</button>
         </form>
       </div>
 

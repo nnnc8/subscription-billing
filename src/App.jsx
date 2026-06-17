@@ -3,6 +3,13 @@ import { HistoryTab } from './components/HistoryTab';
 import { SubscriptionsTab } from './components/SubscriptionsTab';
 import { AiAssistantTab } from './components/AiAssistantTab';
 import AutomationTab from './components/AutomationTab';
+import { 
+  Plus, Zap, Play, Video, VideoOff, Mic, MicOff, Search, MoreHorizontal, BarChart2, X, Settings 
+} from 'lucide-react';
+import { 
+  AVATARS, CURRENT_USER, MEETING_HOST, SPEAKER, P1, P2, P3, ALICE_AV 
+} from './assets/avatars';
+
 
 // Vite dev server has a proxy that forwards /api -> http://127.0.0.1:3000
 // so cookies are always same-origin regardless of dev vs. production.
@@ -35,6 +42,24 @@ function App() {
   const [data, setData] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loading, setLoading] = useState(true);
+  
+  // Theme State
+  const [isDark, setIsDark] = useState(() => {
+    return localStorage.getItem('theme') === 'dark';
+  });
+  const [meetingAlertClosed, setMeetingAlertClosed] = useState(false);
+
+
+  useEffect(() => {
+    if (isDark) {
+      document.body.classList.add('dark-mode');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.body.classList.remove('dark-mode');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDark]);
+
   const [toast, setToast] = useState('');
   const [error, setError] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -752,7 +777,7 @@ function App() {
 
   // Scroll to bottom effect
   useEffect(() => {
-    if (activeTab === 'ai-assistant') {
+    if (activeTab === 'dashboard' || activeTab === 'ai-assistant') {
       const el = document.getElementById('ai-messages-container');
       if (el) {
         el.scrollTop = el.scrollHeight;
@@ -1316,24 +1341,22 @@ function App() {
   const collectionRate = totalBilled > 0 ? Math.round((totalPayments / totalBilled) * 100) : 0;
   const closeGateClear = criticalAuditCount === 0 && ledger.ok && historyIntegrity.ok;
   const operatorHeadline = !closeGateClear
-    ? '先處理帳務風險'
+    ? '帳務系統安全警示'
     : priorityReceivable
-      ? `先處理 ${priorityReceivable.member.name}`
-      : '可以準備月結';
+      ? '本期帳務收繳中'
+      : '本期帳務已全數結清';
   const operatorDetail = !closeGateClear
-    ? '有稽核、事件鏈或歷史封存問題時，先不要做月結或還原。'
+    ? '目前系統偵測到未排除的帳務風險（如事件鏈校驗失敗或歷史紀錄封存未完成）。為保護數據一致性，在修正前請勿進行月結。'
     : priorityReceivable
-      ? `${priorityReceivable.member.name} 是目前最大待收：${formatMoney(priorityReceivable.summary.outstanding)}。`
-      : '目前無待收款，先跑月結預檢確認結轉前狀態。';
+      ? `本期應收總額為 ${formatMoney(totalBilled)}，已成功收回 ${collectionRate}% 帳款。目前還有 ${unpaidMembersCount} 位成員尚未繳清，待收總額為 ${formatMoney(totalReceivables)}。`
+      : '本期所有款項已全數收回，收回率達 100%。系統狀態健康，您可以點擊「月結控制台」進行預檢或等待下月自動推進。';
   const latestLedgerEvent = ledger.recent?.[0];
   const systemPosture = !closeGateClear ? 'RISK HOLD' : priorityReceivable ? 'COLLECT' : 'READY';
   const navItems = [
     { id: 'dashboard', code: '📊', label: '總覽' },
     { id: 'subscriptions', code: '👥', label: '訂閱名額' },
     { id: 'config', code: '⚙️', label: '設定' },
-    { id: 'history', code: '📋', label: '歷史紀錄' },
-    { id: 'automation', code: '✏️', label: 'AI 入帳' },
-    { id: 'ai-assistant', code: '✨', label: 'AI 助理' }
+    { id: 'history', code: '📋', label: '歷史紀錄' }
   ];
   const tabMeta = {
     dashboard: {
@@ -1355,32 +1378,24 @@ function App() {
       kicker: '',
       title: '歷史紀錄',
       description: '瀏覽過往帳期的結帳紀錄與封存狀態。'
-    },
-    'ai-assistant': {
-      kicker: '',
-      title: 'AI 助理',
-      description: '透過對話查詢帳務資料與分析。'
-    },
-    automation: {
-      kicker: '',
-      title: 'AI 入帳',
-      description: '輸入或貼入帳務文字，AI 解析後進入入帳佇列；信心不足或未能匹配的紀錄進待覆核。'
     }
   };
   const activeTabMeta = tabMeta[activeTab] || tabMeta.dashboard;
 
   return (
     <div className="app-container">
+      {/* Fullscreen Dynamic macOS Fluid Liquid Glass Background */}
+      <div className="liquid-glass-bg">
+        <div className="blob blob-1"></div>
+        <div className="blob blob-2"></div>
+        <div className="blob blob-3"></div>
+        <div className="blob blob-4"></div>
+      </div>
+
       {/* Sidebar Navigation */}
       <aside className="sidebar">
-        <div className="logo-section">
-          <div className="logo-mark">
-            <span className="logo-icon">SB</span>
-          </div>
-          <div className="logo-copy">
-            <span className="eyebrow">Billing</span>
-            <span className="logo-text">訂閱帳務</span>
-          </div>
+        <div className="logo-section" style={{ padding: '8px 12px 16px 12px', borderBottom: '1px solid var(--separator-opaque)', marginBottom: '1.5rem' }}>
+          <span style={{ fontSize: '1.25rem', fontWeight: '700', letterSpacing: '-0.4px', color: 'var(--text-primary)' }}>收支帳務</span>
         </div>
         
         <nav className="nav-links">
@@ -1423,6 +1438,46 @@ function App() {
 
       {/* Main Container */}
       <main className="main-content">
+        {/* Top Navigation */}
+        <nav className="topnav" style={{ padding: '0 8px', marginTop: '16px' }}>
+          <button className="icon-btn" style={{ padding: 0, overflow: 'hidden' }} onClick={() => showToast("歡迎使用共乘訂閱對帳系統！")}>
+            <img className="avatar" src={CURRENT_USER} width="48" height="48" alt="Current User" />
+          </button>
+          
+          <div className="toggle-container">
+            <button className="mode-switch" onClick={() => setIsDark(prev => !prev)} aria-label="Toggle theme">
+              <span className="mode-track"></span>
+              <span className="mode-icon" style={{ zIndex: 3, userSelect: 'none' }}>{isDark ? '☾' : '☀'}</span>
+              <span className="mode-handle"></span>
+            </button>
+            <button className="nav-btn" onClick={() => setActiveTab('config')}>Settings</button>
+          </div>
+          
+          {auditWarnings.length > 0 && !meetingAlertClosed && (
+            <div className="meeting-alert">
+              <img className="avatar" src={MEETING_HOST} width="32" height="32" alt="Alert" />
+              <span>帳務系統稽核提醒</span>
+              <span className="time-tag">-{auditWarnings.length} 🚨</span>
+              <span className="ring-close" onClick={() => setMeetingAlertClosed(true)}>
+                <svg className="ring" width="32" height="32" viewBox="0 0 32 32">
+                  <circle cx="16" cy="16" r="14" fill="none" stroke="#e5e7eb" strokeWidth="2" />
+                  <circle cx="16" cy="16" r="14" fill="none" stroke="#000" strokeWidth="2"
+                    strokeDasharray="88" strokeDashoffset="25" transform="rotate(-90 16 16)" strokeLinecap="round" />
+                </svg>
+                <X size={12} strokeWidth={2.5} style={{ zIndex: 1 }} />
+              </span>
+            </div>
+          )}
+          
+          <button className="icon-btn" onClick={() => {
+            const el = document.querySelector('.form-control');
+            if (el) el.focus();
+            showToast("已為您聚焦至流水帳搜尋欄！");
+          }}>
+            <Search size={20} />
+          </button>
+        </nav>
+
         {/* Header */}
         <header className="header-section">
           <div className="title-area">
@@ -1445,172 +1500,137 @@ function App() {
         </header>
 
         {activeTab === 'dashboard' && (
-          <section className={`operator-briefing ${closeGateClear ? 'steady' : 'risk'}`}>
-            <div className="operator-main">
-              <span className="operator-kicker">當前重點</span>
-              <h2>{operatorHeadline}</h2>
-              <p>{operatorDetail}</p>
-              <div className="operator-actions">
-                {priorityReceivable ? (
-                  <>
-                    <button className="btn btn-primary" onClick={() => copyReminder(priorityReceivable.member, priorityReceivable.summary)}>
-                      複製最高待收腳本
-                    </button>
-                    <button className="btn btn-secondary" onClick={() => {
-                      setSelectedMember(priorityReceivable.member.name);
-                      setShowPayModal(true);
-                    }}>
-                      直接登記收款
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    {lifecycleStatus && (
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                        帳期{lifecycleStatus.isCurrent ? '已是最新' : '待更新'}
-                        {lifecycleStatus.lastAdvancedAt && (
-                          <> · 上次推進 {new Date(lifecycleStatus.lastAdvancedAt).toLocaleDateString('zh-TW')}</>
-                        )}
-                      </span>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="operator-grid">
-              <div className="operator-card">
-                <span>待收清單</span>
-                <strong>{formatMoney(totalReceivables)}</strong>
-                <small>{unpaidMembersCount} 人待收 · 收回 {collectionRate}%</small>
-                <div className="queue-list">
+          <>
+            {/* Core Summaries Row */}
+            <div className="operator-briefing-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
+              <div className="operator-card" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', padding: '1.25rem', borderRadius: 'var(--radius-xl)', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>待收清單</span>
+                <strong style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)' }}>{formatMoney(totalReceivables)}</strong>
+                <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{unpaidMembersCount} 人待收 · 收回 {collectionRate}%</small>
+                <div className="queue-list" style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                   {receivableQueue.length === 0 ? (
-                    <p>目前沒有待收款。</p>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>目前沒有待收款。</p>
                   ) : (
                     receivableQueue.slice(0, 3).map(item => (
-                      <button key={item.member.id} className="queue-row" onClick={() => {
+                      <button key={item.member.id} className="queue-row" style={{ display: 'flex', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', padding: '0.25rem 0', cursor: 'pointer', textAlign: 'left', fontSize: '0.8rem', color: 'var(--text-primary)' }} onClick={() => {
                         setSelectedMember(item.member.name);
                         setShowPayModal(true);
                       }}>
                         <span>{item.member.name}{isArchivedEntity(item.member) ? '（已停用）' : ''}</span>
-                        <strong>{formatMoney(item.summary.outstanding)}</strong>
+                        <strong style={{ color: 'var(--text-primary)' }}>{formatMoney(item.summary.outstanding)}</strong>
                       </button>
                     ))
                   )}
                 </div>
               </div>
 
-              <div className="operator-card">
-                <span>月結狀態</span>
-                <strong>{closeGateClear ? '可預檢' : '暫停'}</strong>
-                <small>{totalReceivables > 0 ? `${formatMoney(totalReceivables)} 將結轉為下期前期餘額` : '本期已全數結清'}</small>
-                <div className="gate-list">
+              <div className="operator-card" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', padding: '1.25rem', borderRadius: 'var(--radius-xl)', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>月結狀態</span>
+                <strong style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)' }}>{closeGateClear ? '可預檢' : '暫停'}</strong>
+                <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{totalReceivables > 0 ? `${formatMoney(totalReceivables)} 將結轉為下期前期餘額` : '本期已全數結清'}</small>
+                <div className="gate-list" style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.78rem' }}>
                   <div className={criticalAuditCount === 0 ? 'pass' : 'fail'}><b>{criticalAuditCount === 0 ? '✓' : '!'}</b>帳務稽核 {auditWarnings.length} 提醒</div>
                   <div className={ledger.ok ? 'pass' : 'fail'}><b>{ledger.ok ? '✓' : '!'}</b>事件鏈 {ledger.count || 0} 筆</div>
                   <div className={historyIntegrity.ok ? 'pass' : 'fail'}><b>{historyIntegrity.ok ? '✓' : '!'}</b>歷史封存 {historyIntegrity.sealedCount || 0}/{historyIntegrity.count || 0}</div>
                 </div>
               </div>
 
-              <div className="operator-card">
-                <span>事件鏈</span>
-                <strong>{ledger.ok && historyIntegrity.ok ? '可追溯' : '需檢查'}</strong>
-                <small>{latestLedgerEvent ? `最後操作：${formatLedgerType(latestLedgerEvent.type)} · ${formatEventTime(latestLedgerEvent.at)}` : '尚無事件記錄'}</small>
-                <div className="evidence-strip">
+              <div className="operator-card" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', padding: '1.25rem', borderRadius: 'var(--radius-xl)', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>事件鏈</span>
+                <strong style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)' }}>{ledger.ok && historyIntegrity.ok ? '可追溯' : '需檢查'}</strong>
+                <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latestLedgerEvent ? `最後操作：${formatLedgerType(latestLedgerEvent.type)} · ${formatEventTime(latestLedgerEvent.at)}` : '尚無事件記錄'}</small>
+                <div className="evidence-strip" style={{ marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
                   <code>{ledger.lastHash ? ledger.lastHash.slice(0, 10) : 'genesis'}</code>
                   <span>預收/溢繳 {formatMoney(prepaidTotal)}</span>
                 </div>
               </div>
             </div>
-          </section>
-        )}
 
-        <section className="ops-strip">
-          <div className={`ops-tile ${criticalAuditCount > 0 ? 'risk' : 'clear'}`}>
-            <span>AUDIT</span>
-            <strong>{auditStatus}</strong>
-            <small>{auditWarnings.length} 個提醒</small>
-          </div>
-          <div className="ops-tile">
-            <span>OPEN A/R</span>
-            <strong>${totalReceivables.toLocaleString()}</strong>
-            <small>{unpaidMembersCount} 人未結清</small>
-          </div>
-          <div className="ops-tile">
-            <span>POSTED CASH</span>
-            <strong>${totalPayments.toLocaleString()}</strong>
-            <small>{activePayments.length} 筆收款{voidedPaymentCount > 0 ? ` · ${voidedPaymentCount} 筆作廢` : ''}</small>
-          </div>
-          <div className="ops-tile">
-            <span>ACTIVE SEATS</span>
-            <strong>{activeSeatCount}</strong>
-            <small>{activePlatforms.length} 個平台{data.platforms.length - activePlatforms.length > 0 ? ` · ${data.platforms.length - activePlatforms.length} 已停用` : ''}</small>
-          </div>
-          <div className={`ops-tile ${ledger.ok ? 'clear' : 'risk'}`}>
-            <span>LEDGER</span>
-            <strong>{ledgerStatus}</strong>
-            <small>{ledger.count || 0} 筆事件</small>
-          </div>
-          <div className={`ops-tile ${historyIntegrity.ok ? 'clear' : 'risk'}`}>
-            <span>ARCHIVE</span>
-            <strong>{historySealStatus}</strong>
-            <small>{historyIntegrity.sealedCount || 0}/{historyIntegrity.count || 0} 期</small>
-          </div>
-        </section>
-
-        {auditWarnings.length > 0 && (
-          <section className={`audit-banner ${criticalAuditCount > 0 ? 'critical' : 'warning'}`}>
-            <div className="audit-banner-header">
-              <div>
-                <span className="audit-kicker">Audit feed</span>
-                <h2>{criticalAuditCount > 0 ? `${criticalAuditCount} 個高風險帳務問題` : `${auditWarnings.length} 個帳務提醒`}</h2>
+            <section className="ops-strip">
+              <div className={`ops-tile ${criticalAuditCount > 0 ? 'risk' : 'clear'}`}>
+                <span>AUDIT</span>
+                <strong>{auditStatus}</strong>
+                <small>{auditWarnings.length} 個提醒</small>
               </div>
-              <span className="audit-count">{auditWarnings.length}</span>
-            </div>
-            <div className="audit-list">
-              {auditWarnings.slice(0, 4).map((warning, idx) => (
-                <div key={`${warning.code}-${idx}`} className="audit-item">
-                  <span className={`audit-severity ${warning.severity}`}>{warning.severity === 'critical' ? '高' : '提'}</span>
-                  <div>
-                    <strong>{warning.title}</strong>
-                    <p>{warning.detail}</p>
-                    {warning.impact && <p className="audit-impact">{warning.impact}</p>}
-                  </div>
-                </div>
-              ))}
-              {auditWarnings.length > 4 && (
-                <p className="audit-more">另有 {auditWarnings.length - 4} 個提醒，可由後端稽核 API 查看完整清單。</p>
-              )}
-            </div>
-          </section>
-        )}
-
-        {activeTab === 'dashboard' && ledger.recent && ledger.recent.length > 0 && (
-          <section className="ledger-panel">
-            <div className="ledger-header">
-              <div>
-                <span>事件紀錄</span>
-                <h2>最近操作</h2>
+              <div className="ops-tile">
+                <span>OPEN A/R</span>
+                <strong>${totalReceivables.toLocaleString()}</strong>
+                <small>{unpaidMembersCount} 人未結清</small>
               </div>
-              <code>{ledger.lastHash ? ledger.lastHash.slice(0, 12) : 'genesis'}</code>
-            </div>
-            <div className="ledger-list">
-              {ledger.recent.slice(0, 5).map(event => (
-                <div className="ledger-item" key={event.id}>
-                  <span className="ledger-type">{formatLedgerType(event.type)}</span>
+              <div className="ops-tile">
+                <span>POSTED CASH</span>
+                <strong>${totalPayments.toLocaleString()}</strong>
+                <small>{activePayments.length} 筆收款{voidedPaymentCount > 0 ? ` · ${voidedPaymentCount} 筆作廢` : ''}</small>
+              </div>
+              <div className="ops-tile">
+                <span>ACTIVE SEATS</span>
+                <strong>{activeSeatCount}</strong>
+                <small>{activePlatforms.length} 個平台{data.platforms.length - activePlatforms.length > 0 ? ` · ${data.platforms.length - activePlatforms.length} 已停用` : ''}</small>
+              </div>
+              <div className={`ops-tile ${ledger.ok ? 'clear' : 'risk'}`}>
+                <span>LEDGER</span>
+                <strong>{ledgerStatus}</strong>
+                <small>{ledger.count || 0} 筆事件</small>
+              </div>
+              <div className={`ops-tile ${historyIntegrity.ok ? 'clear' : 'risk'}`}>
+                <span>ARCHIVE</span>
+                <strong>{historySealStatus}</strong>
+                <small>{historyIntegrity.sealedCount || 0}/{historyIntegrity.count || 0} 期</small>
+              </div>
+            </section>
+
+            {auditWarnings.length > 0 && (
+              <section className={`audit-banner ${criticalAuditCount > 0 ? 'critical' : 'warning'}`}>
+                <div className="audit-banner-header">
                   <div>
-                    <strong>{event.summary}</strong>
-                    <p>{formatEventTime(event.at)} · {event.month || data.currentMonth}</p>
+                    <span className="audit-kicker">Audit feed</span>
+                    <h2>{criticalAuditCount > 0 ? `${criticalAuditCount} 個高風險帳務問題` : `${auditWarnings.length} 個帳務提醒`}</h2>
                   </div>
-                  <code>{event.hash ? event.hash.slice(0, 8) : 'pending'}</code>
+                  <span className="audit-count">{auditWarnings.length}</span>
                 </div>
-              ))}
-            </div>
-          </section>
-        )}
+                <div className="audit-list">
+                  {auditWarnings.slice(0, 4).map((warning, idx) => (
+                    <div key={`${warning.code}-${idx}`} className="audit-item">
+                      <span className={`audit-severity ${warning.severity}`}>{warning.severity === 'critical' ? '高' : '提'}</span>
+                      <div>
+                        <strong>{warning.title}</strong>
+                        <p>{warning.detail}</p>
+                        {warning.impact && <p className="audit-impact">{warning.impact}</p>}
+                      </div>
+                    </div>
+                  ))}
+                  {auditWarnings.length > 4 && (
+                    <p className="audit-more">另有 {auditWarnings.length - 4} 個提醒，可由後端稽核 API 查看完整清單。</p>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {ledger.recent && ledger.recent.length > 0 && (
+              <section className="ledger-panel">
+                <div className="ledger-header">
+                  <div>
+                    <span>事件紀錄</span>
+                    <h2>最近操作</h2>
+                  </div>
+                  <code>{ledger.lastHash ? ledger.lastHash.slice(0, 12) : 'genesis'}</code>
+                </div>
+                <div className="ledger-list">
+                  {ledger.recent.slice(0, 5).map(event => (
+                    <div className="ledger-item" key={event.id}>
+                      <span className="ledger-type">{formatLedgerType(event.type)}</span>
+                      <div>
+                        <strong>{event.summary}</strong>
+                        <p>{formatEventTime(event.at)} · {event.month || data.currentMonth}</p>
+                      </div>
+                      <code>{event.hash ? event.hash.slice(0, 8) : 'pending'}</code>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
         {/* Dashboard Tab */}
-        {activeTab === 'dashboard' && (
-          <>
             {/* Top Metric Blocks */}
             {(() => {
               return (
@@ -1662,7 +1682,7 @@ function App() {
 
             {/* Member Cards */}
             <div className="dashboard-grid">
-              {data.members.map(member => {
+              {data.members.map((member, mIdx) => {
                 const summary = getMemberSummary(member);
                 const isPaid = summary.outstanding <= 0;
                 
@@ -1671,7 +1691,10 @@ function App() {
                   <div key={member.id} className={`card ${isPaid ? 'paid' : 'unpaid'}`}>
                     <div className="card-header" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.35rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                        <span className="member-name" style={{ fontSize: '1.1rem', fontWeight: '700' }}>{member.name}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <img className="avatar" src={AVATARS[mIdx % AVATARS.length]} width="32" height="32" alt="" style={{ borderRadius: '50%', flexShrink: 0 }} />
+                          <span className="member-name" style={{ fontSize: '1.1rem', fontWeight: '700' }}>{member.name}</span>
+                        </div>
                         <span className={`status-badge ${isPaid ? 'paid' : 'unpaid'}`}>
                           {isPaid ? 'SETTLED' : 'OPEN'}
                         </span>
@@ -1680,43 +1703,20 @@ function App() {
                       {/* Subscription Badges */}
                       {activeSubs.length > 0 && (
                         <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', width: '100%' }}>
-                          {activeSubs.map(sub => {
-                            const nameLower = sub.platformName.toLowerCase();
-                            const isNetflix = nameLower.includes('netflix') || nameLower.includes('nflx');
-                            const isSpotify = nameLower.includes('spotify') || nameLower.includes('spot');
-                            const isYt = nameLower.includes('yt') || nameLower.includes('youtube');
-                            const isGpt = nameLower.includes('chatgpt') || nameLower.includes('gpt');
-                            
-                            const color = isNetflix ? '#f87171' : 
-                                          isSpotify ? '#4ade80' : 
-                                          isYt ? '#f472b6' : 
-                                          isGpt ? '#34d399' : '#60a5fa';
-                            
-                            const bg = isNetflix ? 'rgba(239, 68, 68, 0.1)' : 
-                                       isSpotify ? 'rgba(34, 197, 94, 0.1)' : 
-                                       isYt ? 'rgba(219, 39, 119, 0.1)' : 
-                                       isGpt ? 'rgba(16, 185, 129, 0.1)' : 'rgba(59, 130, 246, 0.1)';
-
-                            const border = isNetflix ? 'rgba(239, 68, 68, 0.25)' : 
-                                           isSpotify ? 'rgba(34, 197, 94, 0.25)' : 
-                                           isYt ? 'rgba(219, 39, 119, 0.25)' : 
-                                           isGpt ? 'rgba(16, 185, 129, 0.25)' : 'rgba(59, 130, 246, 0.25)';
-                            
-                            return (
-                              <span key={sub.id} style={{ 
-                                fontSize: '0.62rem', 
-                                padding: '0.12rem 0.35rem', 
-                                borderRadius: '5px', 
-                                background: bg, 
-                                color: color,
-                                border: `1px solid ${border}`,
-                                fontWeight: '600',
-                                letterSpacing: '0.3px'
-                              }}>
-                                {getSubscriptionDisplayName(sub)}
-                              </span>
-                            );
-                          })}
+                          {activeSubs.map(sub => (
+                            <span key={sub.id} style={{ 
+                              fontSize: '0.62rem', 
+                              padding: '0.12rem 0.35rem', 
+                              borderRadius: '5px', 
+                              background: 'var(--bg-tertiary)', 
+                              color: 'var(--text-secondary)',
+                              border: '1px solid var(--separator-opaque)',
+                              fontWeight: '600',
+                              letterSpacing: '0.3px'
+                            }}>
+                              {getSubscriptionDisplayName(sub)}
+                            </span>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -1747,6 +1747,44 @@ function App() {
                     </div>
 
                     <div className="card-actions" style={{ flexWrap: 'wrap' }}>
+                      {summary.outstanding > 0 && (
+                        <div style={{ display: 'flex', gap: '0.25rem', width: '100%', marginBottom: '0.5rem', alignItems: 'center' }}>
+                          <select className="form-control" style={{ fontSize: '0.75rem', height: '28px', padding: '2px 8px', width: 'auto', flexGrow: 1 }}
+                            value={aiReminders[member.id]?.style || 'friendly'}
+                            onChange={(e) => {
+                              const style = e.target.value;
+                              setAiReminders(prev => ({
+                                ...prev,
+                                [member.id]: { ...(prev[member.id] || {}), style }
+                              }));
+                            }}
+                          >
+                            <option value="friendly">💡 溫柔幽默</option>
+                            <option value="professional">👔 專業商務</option>
+                            <option value="pirate">🏴‍☠️ 狂野海盜</option>
+                          </select>
+                          <button className="btn btn-secondary" style={{ fontSize: '0.72rem', padding: '0.4rem 0.6rem', flexShrink: 0, height: '28px', display: 'flex', alignItems: 'center' }}
+                            onClick={() => handleGenerateAIReminder(member, summary, aiReminders[member.id]?.style || 'friendly')}
+                            disabled={aiReminders[member.id]?.loading}
+                          >
+                            {aiReminders[member.id]?.loading ? '生成中...' : '✨ AI 生成'}
+                          </button>
+                        </div>
+                      )}
+                      
+                      {aiReminders[member.id]?.text && (
+                        <div style={{ fontSize: '0.7rem', color: 'var(--success)', width: '100%', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>✅ AI 對帳單已就緒</span>
+                          <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.7rem', cursor: 'pointer', padding: 0 }} onClick={() => {
+                            setAiReminders(prev => {
+                              const copy = { ...prev };
+                              delete copy[member.id];
+                              return copy;
+                            });
+                          }}>重設</button>
+                        </div>
+                      )}
+
                       <div style={{ display: 'flex', width: '100%', gap: '0.35rem' }}>
                         <button className="btn btn-secondary" style={{ flexGrow: 1 }} onClick={() => {
                           setSelectedMember(member.name);
@@ -1776,28 +1814,30 @@ function App() {
               </div>
 
             {/* Filter Bar */}
-            <div className="table-container" style={{ padding: '0.85rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                流水帳檢索
+            <div className="table-container filter-bar" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', padding: '14px 24px' }}>
+              <span className="filter-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '600' }}>
+                🔍 流水帳檢索
               </span>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>搜尋關鍵字</span>
-                <input type="text" className="form-control" style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', width: '150px' }} placeholder="備註/說明" value={logSearch} onChange={e => setLogSearch(e.target.value)} />
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div className="filter-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="filter-label" style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '500' }}>搜尋關鍵字</span>
+                  <input type="text" className="form-control" style={{ width: '160px', height: '34px', padding: '6px 12px', fontSize: '0.8rem', borderRadius: '10px' }} placeholder="備註/說明" value={logSearch} onChange={e => setLogSearch(e.target.value)} />
+                </div>
+                <div className="filter-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="filter-label" style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '500' }}>成員姓名</span>
+                  <select className="form-control" style={{ width: '140px', height: '34px', padding: '6px 30px 6px 12px', fontSize: '0.8rem', borderRadius: '10px' }} value={logMemberFilter} onChange={e => setLogMemberFilter(e.target.value)}>
+                    <option value="">全部成員</option>
+                    {data.members.map(m => (
+                      <option key={m.id} value={m.name}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {(logSearch || logMemberFilter) && (
+                  <button className="btn btn-secondary filter-reset-btn" style={{ height: '34px', padding: '0 14px', fontSize: '0.78rem', borderRadius: '10px', margin: 0 }} onClick={() => { setLogSearch(''); setLogMemberFilter(''); }}>
+                    ❌ 重設
+                  </button>
+                )}
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>成員姓名</span>
-                <select className="form-control" style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', width: '120px' }} value={logMemberFilter} onChange={e => setLogMemberFilter(e.target.value)}>
-                  <option value="">全部成員</option>
-                  {data.members.map(m => (
-                    <option key={m.id} value={m.name}>{m.name}</option>
-                  ))}
-                </select>
-              </div>
-              {(logSearch || logMemberFilter) && (
-                <button className="btn btn-secondary" style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', flexGrow: 0 }} onClick={() => { setLogSearch(''); setLogMemberFilter(''); }}>
-                  ❌ 重設
-                </button>
-              )}
             </div>
 
             {/* Current Month Active Logs */}
@@ -1889,6 +1929,21 @@ function App() {
                 </div>
               );
             })()}
+
+            {/* AI Workspace Grid containing AI Ingestion & AI Chat Assistant */}
+            <div className="ai-workspace-grid">
+              {/* Left Column: AI Ingestion */}
+              <AutomationTab onDataChange={fetchData} />
+
+              {/* Right Column: AI Chat Assistant */}
+              <AiAssistantTab
+                aiMessages={aiMessages}
+                aiInput={aiInput}
+                setAiInput={setAiInput}
+                aiLoading={aiLoading}
+                handleSendChatMessage={handleSendChatMessage}
+              />
+            </div>
           </>
         )}
 
@@ -2346,21 +2401,7 @@ function App() {
           />
         )}
 
-        {/* AI Assistant Tab */}
-        {activeTab === 'ai-assistant' && (
-          <AiAssistantTab
-            aiMessages={aiMessages}
-            aiInput={aiInput}
-            setAiInput={setAiInput}
-            aiLoading={aiLoading}
-            handleSendChatMessage={handleSendChatMessage}
-          />
-        )}
 
-        {/* Automation Tab */}
-        {activeTab === 'automation' && (
-          <AutomationTab onDataChange={fetchData} />
-        )}
       </main>
 
       {/* ----------------------------------------------------
@@ -2536,6 +2577,8 @@ function App() {
           </div>
         </div>
       )}
+
+
 
       {/* Toast Notification */}
       {toast && (
