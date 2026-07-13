@@ -411,6 +411,19 @@ rollback: /tmp/luna-rollback/07-smoke-retry1-20260713-230803/ with pre-edit hash
 next: run retry 1 through CI and require health, authenticated writes, backup and recreate assertions
 ```
 
+### 07 Docker smoke retry 2 — 2026-07-13
+
+```text
+batch: 07 retry 2
+status: in_progress
+ci: https://github.com/nnnc8/subscription-billing/actions/runs/29261072333; Docker job 86854398801
+failure: direct tsx startup passed the Corepack hypothesis, but production/cloud-binding readiness rejected the container because PUBLIC_ORIGIN was absent; the smoke already supplied dummy Google and session credentials
+hypothesis: provide a valid smoke-only PUBLIC_ORIGIN so the production readiness gate can start without contacting an external service
+write_set: scripts/docker-smoke.sh and docs/luna-plan/01-master-plan.md evidence only
+rollback: /tmp/luna-rollback/07-smoke-retry2-20260713-231214/ with pre-edit hashes
+next: run the final retry through CI; pass requires health, non-root UID, authenticated member/payment/backup, /data-only persistence and recreate assertions
+```
+
 ### 06 CI retry scope revision — 2026-07-13
 
 ```text

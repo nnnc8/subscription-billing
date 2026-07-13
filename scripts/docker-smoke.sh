@@ -37,6 +37,7 @@ start_container() {
         --env PORT=3000 \
         --env DATA_DIR=/data \
         --env MIGRATE_FROM_JSON=1 \
+        --env PUBLIC_ORIGIN=http://127.0.0.1:3000 \
         --env APP_SESSION_SECRET="$SESSION_SECRET" \
         --env GOOGLE_CLIENT_ID=docker-smoke-client \
         --env GOOGLE_CLIENT_SECRET=docker-smoke-secret \
