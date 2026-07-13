@@ -44,7 +44,7 @@
 | 04 | mounted frontend state、401、DOM tests | `src/**`、Vitest/browser test setup、allowed dev deps | 03 | verified_complete |
 | 05 | strict compiler、lint zero | tsconfig.app/node/test、eslint、fixed warning paths plus pre-inventory exact strict-error paths、engine | 04 | verified_complete |
 | 06 | measured coverage、verify、bundle、CI | package/scripts/Vite/Vitest/CI | 05 | verified_complete |
-| 07 | Docker live smoke、README alignment | Docker files、README、smoke script | 06 | in_progress |
+| 07 | Docker live smoke、README alignment | Docker files、README、smoke script | 06 | verified_complete |
 | 08 | installed runtime/browser closure | operator-only installed plist/runtime; no unattended write | 07 | operator_only |
 | 99 | completion audit and fresh review | docs status/evidence only unless a future user-authorized fix follows | 01A–08 | pending |
 
@@ -353,8 +353,8 @@ next: 07 — Docker live smoke and README alignment
 
 ```text
 batch: 07
-status: in_progress
-sha: 6028913dd95e + dirty main; no stage/commit/branch change
+status: verified_complete
+tested_sha: e8be9a2afa7abc169bca9e186b5fec2b6e96a1fd; main clean; origin/main matched at test time
 write_set: Dockerfile, .dockerignore, scripts/docker-smoke.sh, README.md
 commands:
   - bash -n scripts/docker-smoke.sh
@@ -362,12 +362,14 @@ commands:
   - pnpm run verify
   - pnpm exec eslint . --max-warnings=0
   - pnpm run build
+  - GitHub Actions run https://github.com/nnnc8/subscription-billing/actions/runs/29261255991
+  - Docker job 86855037606 log capture
   - git diff --check
-result: Dockerfile final stage now copies server/; smoke is syntactically valid and fail-closed when Docker is unavailable; full verify, lint/build and diff checks passed
-runtime_scope: no Docker daemon, no container, no named volume, no production DATA_DIR, secrets, paid AI or installed runtime changes
-proof: static files read back; GitHub CI run https://github.com/nnnc8/subscription-billing/actions/runs/29260208221 Docker job built the image after verify; local live image digest, non-root UID, health, authenticated writes, /data-only storage and recreate persistence remain unknown because the runner has no Docker daemon
-rollback: pre-edit snapshot /tmp/luna-rollback/07-20260713-224251/ with hashes and absent-file record; no rollback needed
-next: authorized commit/push only to obtain CI Docker job proof, then 08 remains operator-only
+result: local smoke fail-closed with exit 2 because Docker is unavailable; CI Node 22 job 86854824534 and Node 24 job 86854824414 passed; Docker build and authenticated smoke job 86855037606 passed
+runtime_scope: CI ephemeral Docker image, dynamic host port, dummy OAuth/session credentials, ephemeral named volume; no production DATA_DIR, real secrets, paid AI or installed runtime changes
+proof: image sha256:2459db587c1e6bf9248aa8a6506cc4f839582418214187fc6424cb24428a76fb; container_uid=1000; health reported ok=true, authConfigured=true, dataWritable=true, host=0.0.0.0, port=3000, readiness=ready; data files were database.db, marker and backups only under /data; authenticated member/payment/backup survived container recreation; smoke ended with `docker smoke passed: authenticated member/payment/backup persisted across recreation`
+rollback: pre-edit snapshot /tmp/luna-rollback/07-20260713-224251/ with hashes and absent-file record; Docker smoke retry preimages /tmp/luna-rollback/07-smoke-retry1-20260713-230803/ and /tmp/luna-rollback/07-smoke-retry2-20260713-231214/; no rollback needed
+next: 08 remains operator-only; do not change installed runtime without explicit operator authorization
 ```
 
 ### 08 evidence — 2026-07-13 read-only capture
@@ -390,12 +392,12 @@ next: obtain explicit operator authorization before any installed-runtime action
 
 ```text
 batch: 07 correction
-status: in_progress
+status: verified_complete
 finding: the first CI Docker job satisfied needs: verify and image build, but violated Batch 06's explicit rule that the Docker job cannot be only docker build; authenticated Docker smoke was therefore still absent
 write_set: .github/workflows/verify.yml (already within Batch 06 CI write set), docs/luna-plan/01-master-plan.md evidence only
 change: after the image build, invoke executable scripts/docker-smoke.sh; the script uses dummy signed auth, dynamic port, named ephemeral volume, native fetch, /data isolation and recreate checks, then traps cleanup
 rollback: /tmp/luna-rollback/07-ci-smoke-20260713-230529/ with pre-edit hash recorded
-next: commit/push and require the GitHub Docker job to pass the authenticated smoke before marking 07 verified_complete
+next: authenticated Docker smoke passed in run 29261255991; Batch 07 is verified_complete
 ```
 
 ### 07 Docker smoke retry 1 — 2026-07-13
@@ -415,13 +417,13 @@ next: run retry 1 through CI and require health, authenticated writes, backup an
 
 ```text
 batch: 07 retry 2
-status: in_progress
+status: verified_complete
 ci: https://github.com/nnnc8/subscription-billing/actions/runs/29261072333; Docker job 86854398801
 failure: direct tsx startup passed the Corepack hypothesis, but production/cloud-binding readiness rejected the container because PUBLIC_ORIGIN was absent; the smoke already supplied dummy Google and session credentials
 hypothesis: provide a valid smoke-only PUBLIC_ORIGIN so the production readiness gate can start without contacting an external service
 write_set: scripts/docker-smoke.sh and docs/luna-plan/01-master-plan.md evidence only
 rollback: /tmp/luna-rollback/07-smoke-retry2-20260713-231214/ with pre-edit hashes
-next: run the final retry through CI; pass requires health, non-root UID, authenticated member/payment/backup, /data-only persistence and recreate assertions
+next: final retry passed in run 29261255991; Batch 07 evidence is recorded above
 ```
 
 ### 06 CI retry scope revision — 2026-07-13
