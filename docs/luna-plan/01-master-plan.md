@@ -162,7 +162,7 @@ There is one canonical ledger: the Evidence section of this file, updated per de
 | 04 | verified_complete | `6028913dd95e` + dirty main; 2026-07-13 22:26 gate | 2 targeted files / 6 DOM tests; full 16 files / 117 tests; app typecheck, build, diff check passed | [05](prompts/05-strict-types-and-lint.md) |
 | 05 | verified_complete | `6028913dd95e` + dirty main; 2026-07-13 22:37 gate | hardened app/node/test typechecks, lint zero, full tests, verify and build passed on Node 24.15.0 | [06](prompts/06-quality-gates-and-ci.md) |
 | 06 | verified_complete | `a42ef98` + main; 2026-07-13 22:57 CI gate | coverage thresholds locked to measured floor; local/full CI verify and Docker build passed; CI Docker job needs verify | [07](prompts/07-docker-runtime-and-readme.md) |
-| 07 | in_progress | `a42ef98` + main; 2026-07-13 22:48 static gate / CI build 22:58 | Dockerfile/.dockerignore/smoke/README updated; CI image build passed, but authenticated volume smoke remains unproved | [07](prompts/07-docker-runtime-and-readme.md) live smoke |
+| 07 | verified_complete | `e8be9a2afa7a` + CI run [29261255991](https://github.com/nnnc8/subscription-billing/actions/runs/29261255991); ledger-only run [29261496919](https://github.com/nnnc8/subscription-billing/actions/runs/29261496919) also green | Dockerfile/.dockerignore/README/smoke updated; Node 22/24 verify and authenticated Docker volume smoke passed, including non-root UID, readiness, /data-only storage and recreation persistence | [08](prompts/08-operator-runtime-closure.md) operator gate |
 | 08 | operator_only | — | explicit operator authorization missing | [08](prompts/08-operator-runtime-closure.md) |
 | 99 | pending | — | blocked by earlier batches/review | [99](prompts/99-completion-audit.md) |
 

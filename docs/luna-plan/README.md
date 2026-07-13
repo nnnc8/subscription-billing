@@ -2,7 +2,7 @@
 
 更新日：2026-07-13
 
-這是 subscription-billing 的 safety-first execution package。它保留完整 Phase 2–6 目標，補上 01A–08 的實作邊界、證據、rollback 與 operator gate。
+這是 subscription-billing 的 safety-first execution package。它保留完整 Phase 2–6 目標，補上 01A–08 的實作邊界、證據、rollback 與 operator gate；目前 01A–07 已依證據完成，08 仍需 operator 授權。
 
 ## 先讀
 
@@ -22,18 +22,18 @@ prompts/01a-durable-save-and-mutation-queue.md
 
 ## 目前的真相
 
-- working tree 是 dirty main；本次文件建立前 HEAD 是 6028913dd95e。
-- Codebase MCP project Users-nc8-subscription-billing 已 indexed/ready。
-- backend route split、SQLite repositories、四導航與 Gemini transport 的靜態部分已存在。
-- 現有 11 個 test files / 94 tests 與 legacy pnpm verify 綠。
-- lint 有 5 warnings；strict compiler flags、coverage、unified verify、CI/Docker/browser/LaunchAgent live proof 未完成。
-- installed LaunchAgent 仍指向已刪除的 server.cjs；不能把 template 指向 server.ts 當成 runtime 已修好。
+- `main` clean，最新 ledger commit 是 `9e20972`；origin/main 一致。
+- Codebase MCP `list_projects` 在本輪以 `Transport closed` 失敗；沒有初始化 index，後續以窄範圍 `rg`／direct read 作 documented fallback。
+- 01A–06 的 durable mutation、failure-atomic backup/restore、trust/domain/AI boundary、frontend DOM state、strict type/lint、coverage/verify/bundle/CI 已有本地與 CI 證據。
+- Batch 07 的 Node 22/24 verify 與 authenticated Docker smoke 已通過：non-root UID、ready health、dummy-auth member/payment/backup、`/data` 隔離與 volume recreation persistence 均有 runner log 證據。
+- lint zero、strict compiler flags、coverage floor 與 unified `pnpm verify` 已完成；browser smoke、LaunchAgent cutover 與 paid Gemini live proof 尚未完成。
+- installed LaunchAgent 仍指向已刪除的 `server.cjs` 並 crash-loop；不能把 template 指向 `server.ts` 當成 runtime 已修好。
 
 ## 安全邊界
 
-本次文件交付只新增 docs/luna-plan/**。不得修改產品、依賴、服務、git index、正式 DB/WAL/SHM、backups、.env、installed plist 或 secrets。
+規劃包建立階段只新增 `docs/luna-plan/**`；後續已授權的 batch execution 變更均記錄在 master plan 與 git history。正式 DB/WAL/SHM、backups、`.env`、installed plist、secrets、production volume 與 paid Gemini 仍不在自動執行範圍。
 
-未來 prompt 的產品 write set 只在另一次明確授權後執行。所有測試用 temp DATA_DIR、dynamic port、fake/dummy credentials；paid Gemini、production volume、credential rotation、commit/push 與 deployment 都是獨立授權事項。
+所有測試用 temp DATA_DIR、dynamic port、fake/dummy credentials。Batch 08 的 credential review/rotation、plist backup/cutover、service state、browser smoke 與 production deployment 需要使用者另行明確授權。
 
 ## Batch 順序
 
