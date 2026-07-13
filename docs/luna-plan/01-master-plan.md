@@ -44,7 +44,7 @@
 | 04 | mounted frontend state、401、DOM tests | `src/**`、Vitest/browser test setup、allowed dev deps | 03 | verified_complete |
 | 05 | strict compiler、lint zero | tsconfig.app/node/test、eslint、fixed warning paths plus pre-inventory exact strict-error paths、engine | 04 | verified_complete |
 | 06 | measured coverage、verify、bundle、CI | package/scripts/Vite/Vitest/CI | 05 | verified_complete |
-| 07 | Docker live smoke、README alignment | Docker files、README、smoke script | 06 | pending |
+| 07 | Docker live smoke、README alignment | Docker files、README、smoke script | 06 | in_progress |
 | 08 | installed runtime/browser closure | operator-only installed plist/runtime; no unattended write | 07 | operator_only |
 | 99 | completion audit and fresh review | docs status/evidence only unless a future user-authorized fix follows | 01A–08 | pending |
 
