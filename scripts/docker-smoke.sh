@@ -57,7 +57,7 @@ start_container() {
         port=$(docker port "$CONTAINER" 3000/tcp 2>/dev/null | sed -n 's/.*:\([0-9][0-9]*\)$/\1/p')
         if [ -n "$port" ]; then
             BASE_URL="http://127.0.0.1:$port"
-            if node - "$BASE_URL" <<'NODE'
+            if node - "$BASE_URL" 2>/dev/null <<'NODE'
 const response = await fetch(`${process.argv[2]}/api/health`);
 if (!response.ok) process.exit(1);
 const payload = await response.json();

@@ -398,6 +398,19 @@ rollback: /tmp/luna-rollback/07-ci-smoke-20260713-230529/ with pre-edit hash rec
 next: commit/push and require the GitHub Docker job to pass the authenticated smoke before marking 07 verified_complete
 ```
 
+### 07 Docker smoke retry 1 — 2026-07-13
+
+```text
+batch: 07 retry 1
+status: in_progress
+ci: https://github.com/nnnc8/subscription-billing/actions/runs/29260786785; Docker job 86853396002
+failure: Docker image build passed, but scripts/docker-smoke.sh could not reach /api/health; container logs show runtime Corepack attempted to download pnpm and failed with EACCES writing under /app as non-root node
+hypothesis: the image's CMD pnpm start is invalid for a read-only application directory because runtime Corepack is not provisioned; direct execution of the already-installed tsx CLI will keep startup within the image and remove the write requirement
+write_set: Dockerfile, scripts/docker-smoke.sh, docs/luna-plan/01-master-plan.md evidence only
+rollback: /tmp/luna-rollback/07-smoke-retry1-20260713-230803/ with pre-edit hashes
+next: run retry 1 through CI and require health, authenticated writes, backup and recreate assertions
+```
+
 ### 06 CI retry scope revision — 2026-07-13
 
 ```text
