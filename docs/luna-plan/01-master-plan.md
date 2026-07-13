@@ -383,9 +383,20 @@ redacted_args: node + server.cjs; not the required node + tsx + server.ts
 launchctl: loaded, active count 0 at top-level, state spawn scheduled, last exit code 1; no live PID/listener captured
 port: 3000
 data_dir: not configured in installed plist; runtime would fall back to project root, which is unsafe for operator cutover
-environment_keys: PATH, PORT only; values withheld; other user LaunchAgents were listed by filename only to assess blast radius
-runtime_scope: read-only plist/launchctl/ps/lsof inspection only; no service restart, plist write, credential access, browser session, production DATA_DIR or paid AI
-next: obtain explicit operator authorization before any installed-runtime action; do not restart known server.cjs crash-loop
+environment_keys: installed plist EnvironmentVariables exposes PATH and PORT; launchctl inherited environment also contains at least one redacted credential-like value; values were not captured or repeated; other user LaunchAgents were listed by filename only to assess blast radius
+runtime_scope: read-only plist/launchctl inspection only; no service restart, plist write, credential read/rotation, browser session, production DATA_DIR or paid AI; broad process/listener capture was stopped after the inherited environment was detected
+next: obtain explicit operator authorization before any installed-runtime or credential action; use only the prompt's redacted projection and do not restart known server.cjs crash-loop
+```
+
+### 08 read-only capture correction — 2026-07-13
+
+```text
+batch: 08 capture correction
+status: operator_only
+finding: a diagnostic launchctl print was broader than the prompt's allowed redacted projection and exposed an inherited credential-like value in tool output; the value was not copied to files, repo, logs or any response, and no credential or service mutation occurred
+authoritative_current_state: installed plist EnvironmentVariables remain PATH and PORT; launchctl top-level state remains spawn scheduled, active count 0 and last exit code 1; no server listener was found
+write_set: master ledger evidence only; no product, plist, credential, service, database, backup or browser write
+next: explicit operator authorization is still required; after authorization, use only the exact redacted commands in prompts/08-operator-runtime-closure.md and separately assess whether credential rotation is needed
 ```
 
 ### 07 CI smoke wiring correction — 2026-07-13
