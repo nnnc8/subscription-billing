@@ -159,8 +159,8 @@ describe('frontend navigation and state persistence', () => {
     await user.click(screen.getByRole('button', { name: '歷史紀錄' }));
     const history = screen.getByRole('region', { name: '歷史紀錄' });
     await user.selectOptions(within(history).getByLabelText('帳期'), '2026/05');
-
     await user.click(screen.getByRole('button', { name: '總覽' }));
+
     const automationText = await within(dashboard()).findByLabelText('帳務文字');
     await user.type(automationText, 'Member Alpha 轉 270');
     await user.click(within(dashboard()).getByRole('button', { name: '解析並入帳' }));
@@ -183,7 +183,7 @@ describe('frontend navigation and state persistence', () => {
     expect((within(dashboard()).getByLabelText('帳務文字') as HTMLTextAreaElement).value).toBe('Member Alpha 轉 270');
     expect(within(dashboard()).getByRole('button', { name: /待覆核/ }).getAttribute('aria-pressed')).toBe('true');
     expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/automation/ingest')).toHaveLength(1);
-  });
+  }, 15_000);
 
   test('uses the shared apiFetch for automation requests', async () => {
     const user = userEvent.setup();

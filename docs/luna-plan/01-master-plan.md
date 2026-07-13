@@ -386,6 +386,29 @@ runtime_scope: read-only plist/launchctl/ps/lsof inspection only; no service res
 next: obtain explicit operator authorization before any installed-runtime action; do not restart known server.cjs crash-loop
 ```
 
+### 06 CI retry scope revision — 2026-07-13
+
+```text
+batch: 06 retry 1
+status: in_progress
+reason: GitHub Verify run 29259751904 failed on Node 22 and Node 24 because tests/frontend-dom.test.ts:140 exceeded Vitest's 5000ms test timeout; local targeted run passed in 2466ms
+hypothesis: repeated user.type character events on full Dashboard rerender make CI latency exceed the fixed timeout; replacing only non-keyboard-specific text entry with one change event preserves the state invariant while removing event overhead
+write_set_revision: docs/luna-plan/prompts/06-quality-gates-and-ci.md and tests/frontend-dom.test.ts; no product/runtime/data/credential change
+next: apply the smallest test-only change, run targeted test and full pnpm verify, then recommit/push for a fresh CI SHA
+```
+
+### 06 CI retry 2 evidence — 2026-07-13
+
+```text
+batch: 06 retry 2
+status: ready_for_ci
+hypothesis: the DOM behavior is valid but the full Dashboard user-event test exceeds the default 5000ms only on GitHub runners; a test-local 15000ms timeout removes environment-dependent false failure without changing global timeout or coverage behavior
+result: targeted frontend DOM 4 tests passed; full coverage restored to statements 63.33%, branches 52.04%, functions 64.34%, lines 65.72%; full pnpm verify passed; no coverage threshold or exclude changed
+write_set: tests/frontend-dom.test.ts plus prompt/ledger scope revision; no product/runtime/data/credential change
+rollback: /tmp/luna-rollback/06-retry2-20260713-225730/ HEAD preimage hashes recorded; if fresh CI fails, restore this retry's hunks and stop after the allowed retry count
+next: commit/push retry SHA and inspect Node 22/24 CI plus Docker dependency result
+```
+
 ## Rollback
 
 Before each batch, capture exact preimages for every product/prompt write-set path, including untracked files, under /tmp/luna-rollback/<batch>-<timestamp>/ and record sha256 hashes in the ledger. The master ledger status/evidence hunk is append-only and exempt from restoration; restore product/prompt preimages first, then append the failure/status record. A git diff is not sufficient for an untracked preimage. If a gate fails after retry 2, restore the preimage, read back hashes and rerun the nearest gate. Never use `git reset --hard`, `git checkout --`, `clean`, or branch switching.

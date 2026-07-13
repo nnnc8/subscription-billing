@@ -20,6 +20,7 @@ Make one reproducible quality entry point and measure coverage/bundle from the f
 - vite.config.ts
 - scripts/bundle-gate.cjs
 - tests/coverage-gate.test.ts (new; only if a deterministic behavior test is needed)
+- tests/frontend-dom.test.ts (CI stability retry only; keep user-event coverage and set an explicit timeout on the heavy DOM test)
 - .github/workflows/verify.yml
 - docs/luna-plan/01-master-plan.md (status/evidence only)
 
