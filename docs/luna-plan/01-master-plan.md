@@ -161,8 +161,8 @@ There is one canonical ledger: the Evidence section of this file, updated per de
 | 03 | verified_complete | `6028913dd95e` + dirty main; 2026-07-13 22:17 gate | trust/CORS/OAuth/AI schema and fresh-DB domain checks passed; MCP list_projects transport failure recorded | [04](prompts/04-frontend-state-and-dom-tests.md) |
 | 04 | verified_complete | `6028913dd95e` + dirty main; 2026-07-13 22:26 gate | 2 targeted files / 6 DOM tests; full 16 files / 117 tests; app typecheck, build, diff check passed | [05](prompts/05-strict-types-and-lint.md) |
 | 05 | verified_complete | `6028913dd95e` + dirty main; 2026-07-13 22:37 gate | hardened app/node/test typechecks, lint zero, full tests, verify and build passed on Node 24.15.0 | [06](prompts/06-quality-gates-and-ci.md) |
-| 06 | verified_complete | `6028913dd95e` + dirty main; 2026-07-13 22:42 gate | coverage thresholds locked to measured floor; full verify, Vite manifest/static bundle gate and diff check passed; CI Docker job needs verify | [07](prompts/07-docker-runtime-and-readme.md) |
-| 07 | in_progress | `6028913dd95e` + dirty main; 2026-07-13 22:48 static gate | Dockerfile/.dockerignore/smoke/README updated and read back; local Docker binary/daemon unavailable, live proof remains | [08](prompts/08-operator-runtime-closure.md) after Docker CI proof |
+| 06 | verified_complete | `a42ef98` + main; 2026-07-13 22:57 CI gate | coverage thresholds locked to measured floor; local/full CI verify and Docker build passed; CI Docker job needs verify | [07](prompts/07-docker-runtime-and-readme.md) |
+| 07 | in_progress | `a42ef98` + main; 2026-07-13 22:48 static gate / CI build 22:58 | Dockerfile/.dockerignore/smoke/README updated; CI image build passed, but authenticated volume smoke remains unproved | [07](prompts/07-docker-runtime-and-readme.md) live smoke |
 | 08 | operator_only | — | explicit operator authorization missing | [08](prompts/08-operator-runtime-closure.md) |
 | 99 | pending | — | blocked by earlier batches/review | [99](prompts/99-completion-audit.md) |
 
@@ -365,7 +365,7 @@ commands:
   - git diff --check
 result: Dockerfile final stage now copies server/; smoke is syntactically valid and fail-closed when Docker is unavailable; full verify, lint/build and diff checks passed
 runtime_scope: no Docker daemon, no container, no named volume, no production DATA_DIR, secrets, paid AI or installed runtime changes
-proof: static files read back; live image digest, non-root UID, health, authenticated writes, /data-only storage and recreate persistence remain unknown because Docker is unavailable
+proof: static files read back; GitHub CI run https://github.com/nnnc8/subscription-billing/actions/runs/29260208221 Docker job built the image after verify; local live image digest, non-root UID, health, authenticated writes, /data-only storage and recreate persistence remain unknown because the runner has no Docker daemon
 rollback: pre-edit snapshot /tmp/luna-rollback/07-20260713-224251/ with hashes and absent-file record; no rollback needed
 next: authorized commit/push only to obtain CI Docker job proof, then 08 remains operator-only
 ```
@@ -407,6 +407,18 @@ result: targeted frontend DOM 4 tests passed; full coverage restored to statemen
 write_set: tests/frontend-dom.test.ts plus prompt/ledger scope revision; no product/runtime/data/credential change
 rollback: /tmp/luna-rollback/06-retry2-20260713-225730/ HEAD preimage hashes recorded; if fresh CI fails, restore this retry's hunks and stop after the allowed retry count
 next: commit/push retry SHA and inspect Node 22/24 CI plus Docker dependency result
+```
+
+### 06 CI retry 2 result — 2026-07-13
+
+```text
+batch: 06 retry 2
+status: verified_complete
+sha: a42ef987f1e0a90a4908bbd17464dd9735ac20ce
+ci: https://github.com/nnnc8/subscription-billing/actions/runs/29260208221
+jobs: verify (Node 22) 86851130005 passed; verify (Node 24) 86851130021 passed; docker 86851357066 passed after needs: verify
+result: CI ran the common pnpm verify on both Node versions and built the Docker image successfully; Node.js 20 deprecation annotations are non-blocking runner warnings
+next: 07 Docker live smoke/read-back; local Docker unavailable, CI image build proof is recorded but authenticated volume persistence remains unproved
 ```
 
 ## Rollback
