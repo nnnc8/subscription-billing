@@ -22,7 +22,7 @@ Manage members, track payments, generate invoices, and reconcile accounts — al
 - 💳 **Payment Recording** — Log payments with duplicate detection, void support, and full audit trail
 - 📋 **Monthly Settlement** — Automated month-close with balance carryover and readiness checks
 - ⚡ **AI Automation Inbox** — Paste natural language text; Gemini parses → validates → auto-applies or queues for review
-- 🤖 **AI Assistant** — Natural language billing queries powered by Google Gemini with function calling
+- 🤖 **AI Assistant** — Natural language billing queries powered by the Google Gemini AI Studio API with function calling
 - 🔍 **RAG Search** — Vector-indexed transaction history for context-aware AI responses
 - ✉️ **Invoice Generation** — AI-generated payment reminders in 5 tones (friendly, formal, pirate, poetic, urgent)
 - 🔒 **Google OAuth** — Allowlisted email authentication with signed HttpOnly session cookies
@@ -36,7 +36,7 @@ Manage members, track payments, generate invoices, and reconcile accounts — al
 | Frontend | React 19, Vite 8 |
 | Backend | Express 5, TypeScript ESM |
 | Database | SQLite (WAL mode) via `better-sqlite3` |
-| AI | Google Gemini (AI Studio / Vertex AI) |
+| AI | Google Gemini AI Studio API (optional; no Vertex runtime) |
 | Auth | Google OAuth 2.0 |
 | Testing | Vitest |
 | Deployment | Docker, macOS LaunchAgent |
@@ -45,7 +45,7 @@ Manage members, track payments, generate invoices, and reconcile accounts — al
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org) 22+
+- [Node.js](https://nodejs.org) 22.12+
 - [pnpm](https://pnpm.io) 11+
 - A [Google Cloud Console](https://console.cloud.google.com) project with OAuth credentials
 
@@ -72,7 +72,10 @@ APP_SESSION_SECRET=<random-32-char-string>
 GOOGLE_CLIENT_ID=<your-oauth-client-id>
 GOOGLE_CLIENT_SECRET=<your-oauth-client-secret>
 GOOGLE_ALLOWED_EMAILS=you@example.com
-GOOGLE_GEMINI_API_KEY=<your-gemini-api-key>  # Optional, enables AI features
+GOOGLE_GEMINI_API_KEY=<your-gemini-api-key>  # Optional AI Studio key
+PUBLIC_ORIGIN=http://127.0.0.1:3000
+# ALLOWED_ORIGINS=https://billing.example.com
+# TRUST_PROXY_CIDRS=10.0.0.0/8
 ```
 
 ### Running
@@ -84,7 +87,7 @@ pnpm dev      # Vite dev server (frontend)
 pnpm api      # Express API server (backend)
 ```
 
-**Production**:
+**Production** (the server entry is `server.ts`):
 
 ```bash
 pnpm run build
@@ -136,9 +139,9 @@ graph TB
 subscription-billing/
 ├── server.ts                # Express API server
 ├── src/
-│   ├── App.jsx              # Main React application
+│   ├── App.tsx              # Main React application
 │   ├── components/
-│   │   ├── AutomationTab.jsx    # ⚡ AI Automation Inbox UI
+│   │   ├── AutomationTab.tsx    # ⚡ AI Automation Inbox UI
 │   │   ├── AiAssistantTab.tsx   # AI chat assistant
 │   │   ├── HistoryTab.tsx
 │   │   └── SubscriptionsTab.tsx
@@ -170,7 +173,7 @@ subscription-billing/
 # Unit tests (Vitest)
 pnpm test
 
-# Full verification pipeline (auth, privacy, accounting, portability)
+# Full verification pipeline: lint, strict typechecks, coverage, legacy checks, build and bundle gate
 pnpm run verify
 
 # Linting
@@ -185,6 +188,16 @@ pnpm run lint
 docker compose up --build -d
 ```
 
+The application stores `database.db`, its WAL/SHM files, and rotating backups only under `DATA_DIR` (the Compose volume is mounted at `/data`). Do not bake live data or secrets into an image. The disposable end-to-end smoke is:
+
+```bash
+scripts/docker-smoke.sh
+```
+
+The smoke uses a named temporary volume, dummy signed authentication, a dynamic host port, and removes the container/volume on exit. A fresh production volume must be initialized from an operator-approved database; the smoke alone uses the demo fixture with `MIGRATE_FROM_JSON=1`.
+
+The server exposes 38 `/api` routes. `/api/health` returns 503 until atomic initialization, migration, lifecycle and domain checks are ready.
+
 ### macOS Background Service
 
 ```bash
@@ -196,22 +209,23 @@ pnpm run launchd:uninstall  # Remove service
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/data` | Full application state |
-| `POST` | `/api/payment` | Record a payment |
-| `DELETE` | `/api/payment/:id` | Void a payment |
-| `POST` | `/api/temp-charge` | Record a temporary charge |
-| `POST` | `/api/update-config-bundle` | Batch update settings |
-| `GET` | `/api/close-preview` | Month-close readiness check |
+| `GET` | `/api/health`, `/api/auth/session`, `/api/auth/login` | Health and auth state/login |
+| `GET` | `/api/auth/callback` | Google OAuth callback |
+| `POST` | `/api/auth/logout` | End the local session |
+| `GET` | `/api/data`, `/api/export-json` | Read state or download JSON attachment |
+| `POST` | `/api/payment`, `/api/temp-charge` | Record billing transactions |
+| `DELETE` | `/api/payment/:id`, `/api/temp-charge/:id` | Void transactions |
+| `POST` | `/api/update-prices`, `/api/update-members`, `/api/update-subscriptions`, `/api/update-bank`, `/api/update-config-bundle` | Update settings and entities |
+| `POST` | `/api/member`, `/api/platform` | Create entities |
+| `DELETE` | `/api/member/:id`, `/api/platform/:id` | Archive/delete entities |
 | `POST` | `/api/settle` | Execute monthly settlement |
-| `POST` | `/api/ai/chat` | AI assistant conversation |
-| `POST` | `/api/ai/generate-reminder` | Generate invoice text |
-| `POST` | `/api/automation/ingest` | ⚡ Parse natural language → proposals |
-| `GET` | `/api/automation/inbox` | List session proposals |
-| `POST` | `/api/automation/confirm/:id` | Apply a pending proposal |
-| `POST` | `/api/automation/reject/:id` | Reject a pending proposal |
-| `GET` | `/api/backups` | List backup snapshots |
-| `POST` | `/api/backups/create` | Create backup |
-| `POST` | `/api/backups/restore` | Restore from backup |
+| `GET` | `/api/close-preview`, `/api/audit`, `/api/lifecycle/status`, `/api/ledger` | Lifecycle and audit views |
+| `POST` | `/api/ai/generate-reminder`, `/api/ai/chat`, `/api/ai/rag-search`, `/api/ai/chat-legacy` | AI Studio-only features |
+| `POST` | `/api/automation/ingest`, `/api/automation/confirm/:id`, `/api/automation/reject/:id` | Automation proposals |
+| `GET` | `/api/automation/inbox` | List automation proposals |
+| `GET` | `/api/backups`, `/api/backups/:filename/preview` | List and preview backups |
+| `POST` | `/api/backups/restore`, `/api/backups/create` | Restore or create backups |
+| `DELETE` | `/api/backups/:filename` | Delete a backup through the ledger-safe tombstone flow |
 
 ## Contributing
 
@@ -223,4 +237,3 @@ pnpm run launchd:uninstall  # Remove service
 ## License
 
 MIT © 2026
-

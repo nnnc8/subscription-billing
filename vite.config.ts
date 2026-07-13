@@ -4,6 +4,9 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    manifest: true,
+  },
   server: {
     proxy: {
       // Forward all /api requests to Express backend (keeps cookies same-origin)
@@ -15,4 +18,3 @@ export default defineConfig({
     }
   }
 })
-

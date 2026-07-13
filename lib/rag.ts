@@ -141,7 +141,6 @@ async function buildRAGIndex(db: Database): Promise<void> {
     isBuilding = true;
 
     try {
-        console.log('Building RAG index...');
         const chunks = generateChunks(db);
 
         const promises = chunks.map(async (chunk) => {
@@ -151,8 +150,7 @@ async function buildRAGIndex(db: Database): Promise<void> {
                     ...chunk,
                     vector
                 };
-            } catch (err) {
-                console.error(`Failed to create embedding for chunk: ${chunk.text.substring(0, 30)}...`, (err as Error).message);
+            } catch {
                 return null;
             }
         });
@@ -160,9 +158,8 @@ async function buildRAGIndex(db: Database): Promise<void> {
         const results = await Promise.all(promises);
         cachedIndex = results.filter(r => r !== null) as IndexChunk[];
         isDirty = false;
-        console.log(`RAG index successfully built with ${cachedIndex!.length} chunks.`);
-    } catch (err) {
-        console.error('Error building RAG index:', err);
+    } catch {
+        cachedIndex = [];
     } finally {
         isBuilding = false;
     }
@@ -195,8 +192,7 @@ export async function queryRAG(db: Database, queryText: string, topK = 5): Promi
 
         scored.sort((a, b) => b.score - a.score);
         return scored.slice(0, topK);
-    } catch (err) {
-        console.error('Error querying RAG:', err);
+    } catch {
         return [];
     }
 }

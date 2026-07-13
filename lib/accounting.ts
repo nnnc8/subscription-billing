@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { Database, Member, Platform, Subscription, Payment, TempCharge, BalanceEntry, HistoryEntry, HistorySeal, Ledger, LedgerEvent, AuditWarning, ClosePreview, SystemSnapshot } from '../src/types/billing.js';
+import type { Database, Member, Platform, Subscription, Payment, TempCharge, BalanceEntry, HistoryEntry, Ledger, LedgerEvent, AuditWarning, ClosePreview, SystemSnapshot } from '../src/types/billing.js';
 
 export const MONTH_RE = /^\d{4}\/(0[1-9]|1[0-2])$/;
 
@@ -7,7 +7,8 @@ export function monthToCode(monthStr: string | null | undefined): number | null 
     if (typeof monthStr !== 'string' || !MONTH_RE.test(monthStr)) {
         return null;
     }
-    const [year, month] = monthStr.split('/').map(Number);
+    const year = Number(monthStr.slice(0, 4));
+    const month = Number(monthStr.slice(5, 7));
     return year * 12 + month;
 }
 
@@ -191,7 +192,7 @@ function ensureLedger(db: Database): Ledger {
 }
 
 function computeLedgerHash(entry: Record<string, unknown>): string {
-    const { hash, ...hashable } = entry;
+    const hashable = Object.fromEntries(Object.entries(entry).filter(([key]) => key !== 'hash'));
     return sha256(stableStringify(hashable));
 }
 
@@ -257,7 +258,7 @@ export function getLedgerSummary(db: Database): { ok: boolean; count: number; la
     const entries = db.ledger && Array.isArray(db.ledger.entries) ? db.ledger.entries : [];
     return {
         ...verification,
-        latest: entries.length ? entries[entries.length - 1] : null,
+        latest: entries.at(-1) ?? null,
         recent: entries.slice(-8).reverse()
     };
 }
@@ -307,12 +308,15 @@ export function normalizeDatabaseRelations(db: Database): Database {
     db.payments = (db.payments || []).map((payment, index) => normalizeMemberRecord(payment, index, 'pay'));
     db.tempCharges = (db.tempCharges || []).map((charge, index) => normalizeMemberRecord(charge, index, 'chg'));
 
-    db.history = (db.history || []).map(entry => ({
-        ...entry,
-        balances: (entry.balances || []).map((balance, index) => normalizeMemberRecord(balance, index, 'bal')),
-        payments: (entry.payments || []).map((payment, index) => normalizeMemberRecord(payment, index, 'pay')),
-        tempCharges: (entry.tempCharges || []).map((charge, index) => normalizeMemberRecord(charge, index, 'chg'))
-    }));
+    db.history = (db.history || []).map(entry => {
+        if (entry.seal?.hash) return entry;
+        return {
+            ...entry,
+            balances: (entry.balances || []).map((balance, index) => normalizeMemberRecord(balance, index, 'bal')),
+            payments: (entry.payments || []).map((payment, index) => normalizeMemberRecord(payment, index, 'pay')),
+            tempCharges: (entry.tempCharges || []).map((charge, index) => normalizeMemberRecord(charge, index, 'chg'))
+        };
+    });
     ensureHistorySeals(db);
 
     return db;
@@ -397,7 +401,8 @@ export function calculateCurrentMonthBalances(db: Database): BalanceEntry[] {
 function nextMonthString(monthStr: string): string | null {
     const code = monthToCode(monthStr);
     if (code === null) return null;
-    const [year, month] = monthStr.split('/').map(Number);
+    const year = Number(monthStr.slice(0, 4));
+    const month = Number(monthStr.slice(5, 7));
     if (month === 12) {
         return `${year + 1}/01`;
     }
@@ -407,7 +412,8 @@ function nextMonthString(monthStr: string): string | null {
 export function previousMonthString(monthStr: string): string | null {
     const code = monthToCode(monthStr);
     if (code === null) return null;
-    const [year, month] = monthStr.split('/').map(Number);
+    const year = Number(monthStr.slice(0, 4));
+    const month = Number(monthStr.slice(5, 7));
     if (month === 1) {
         return `${year - 1}/12`;
     }
@@ -579,8 +585,8 @@ export function getHistoryIntegrity(db: Database): { ok: boolean; count: number;
         ok: problems.filter(problem => problem.severity === 'critical').length === 0,
         count: entries.length,
         sealedCount,
-        latestMonth: entries.length ? entries[entries.length - 1].month : null,
-        latestHash: entries.length ? (entries[entries.length - 1].seal?.hash || null) : null,
+        latestMonth: entries.at(-1)?.month ?? null,
+        latestHash: entries.at(-1)?.seal?.hash ?? null,
         problems
     };
 }
@@ -728,7 +734,7 @@ export function getSystemSnapshot(db: Database | null): SystemSnapshot {
         totals,
         history: {
             count: history.length,
-            latestMonth: history.length ? history[history.length - 1].month : null,
+            latestMonth: history.at(-1)?.month ?? null,
             integrity: historyIntegrity
         },
         ledger: {
@@ -753,7 +759,9 @@ export function recalculateHistoryBalances(db: Database): Database {
     });
 
     const rollingBalances: Record<string, number> = {};
-    (historyEntries[0].balances || []).forEach(balance => {
+    const firstEntry = historyEntries[0];
+    if (!firstEntry) return db;
+    (firstEntry.balances || []).forEach(balance => {
         rollingBalances[memberRecordKey(balance)] = toNumber(balance.priorBalance);
     });
 
@@ -762,9 +770,11 @@ export function recalculateHistoryBalances(db: Database): Database {
 
         if (index > 0) {
             const previousEntry = historyEntries[index - 1];
-            (previousEntry.balances || []).forEach(previousBalance => {
-                rollingBalances[memberRecordKey(previousBalance)] = toNumber(previousBalance.endingBalance);
-            });
+            if (previousEntry) {
+                (previousEntry.balances || []).forEach(previousBalance => {
+                    rollingBalances[memberRecordKey(previousBalance)] = toNumber(previousBalance.endingBalance);
+                });
+            }
         }
 
         (entry.balances || []).forEach(balance => {
@@ -792,9 +802,9 @@ export function recalculateHistoryBalances(db: Database): Database {
         });
     });
 
-    const lastEntry = historyEntries[historyEntries.length - 1];
+    const lastEntry = historyEntries.at(-1);
     (db.members || []).forEach(member => {
-        const lastBalance = (lastEntry.balances || []).find(b => isMemberRecord(b, member));
+        const lastBalance = lastEntry?.balances.find(b => isMemberRecord(b, member));
         if (lastBalance) {
             member.priorBalance = toNumber(lastBalance.endingBalance);
         }
@@ -803,9 +813,45 @@ export function recalculateHistoryBalances(db: Database): Database {
     return db;
 }
 
-function addWarning(warnings: AuditWarning[], severity: AuditWarning['severity'], code: string, title: string, detail: string, impact?: string): void {
+function addWarning(warnings: AuditWarning[], severity: AuditWarning['severity'], code: string, title: string, detail: string): void {
     const severityStr = severity;
     warnings.push({ severity: severityStr, id: code, type: code, code, title, detail });
+}
+
+function isValidCalendarDate(value: unknown): value is string {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return Number.isFinite(date.getTime())
+        && date.getUTCFullYear() === Number(value.slice(0, 4))
+        && date.getUTCMonth() + 1 === Number(value.slice(5, 7))
+        && date.getUTCDate() === Number(value.slice(8, 10));
+}
+
+function monthToCycle(month: string | undefined): string | null {
+    const match = month?.match(/^(\d{4})\/(\d{2})$/);
+    return match ? `${match[1]}${match[2]}` : null;
+}
+
+function addDuplicateIdWarnings(
+    warnings: AuditWarning[],
+    records: Array<{ id?: string }>,
+    code: string,
+    label: string
+): void {
+    const counts = new Map<string, number>();
+    records.forEach(record => {
+        const id = typeof record.id === 'string' ? record.id.trim() : '';
+        if (!id) {
+            addWarning(warnings, 'high', `missing_${code}_id`, `${label}缺少唯一 ID`, `${label}紀錄缺少 id。`);
+            return;
+        }
+        counts.set(id, (counts.get(id) || 0) + 1);
+    });
+    counts.forEach((count, id) => {
+        if (count > 1) {
+            addWarning(warnings, 'high', `duplicate_${code}_id`, `${label} ID 重複`, `${id} 出現 ${count} 次。`);
+        }
+    });
 }
 
 export function findAccountingWarnings(db: Database | null, monthStr?: string): AuditWarning[] {
@@ -816,6 +862,12 @@ export function findAccountingWarnings(db: Database | null, monthStr?: string): 
     }
 
     const targetMonth = monthStr || (db && db.currentMonth);
+
+    addDuplicateIdWarnings(warnings, db.members, 'member', '成員');
+    addDuplicateIdWarnings(warnings, db.platforms, 'platform', '平台');
+    addDuplicateIdWarnings(warnings, db.subscriptions, 'subscription', '訂閱');
+    addDuplicateIdWarnings(warnings, db.payments, 'payment', '付款');
+    addDuplicateIdWarnings(warnings, db.tempCharges, 'temp_charge', '臨時加帳');
 
     if (monthToCode(db.currentMonth) === null) {
         addWarning(warnings, 'high', 'invalid_current_month', '目前帳期格式錯誤', `currentMonth=${db.currentMonth || '(空)'}`);
@@ -831,8 +883,7 @@ export function findAccountingWarnings(db: Database | null, monthStr?: string): 
             'high',
             'ledger_integrity_failed',
             '帳務事件鏈驗證失敗',
-            `事件鏈問題：${ledgerStatus.problems.join(', ')}`,
-            '請先從備份或事件紀錄確認資料是否被手動改動，再進行月結。'
+            `事件鏈問題：${ledgerStatus.problems.join(', ')}`
         );
     }
 
@@ -913,20 +964,17 @@ export function findAccountingWarnings(db: Database | null, monthStr?: string): 
         if (subscriptions.every(isIntentionalAdditionalSeat)) return;
 
         const first = subscriptions[0];
+        if (!first) return;
         const member = resolveMember(db, first);
         const platform = resolvePlatform(db, first);
         const memberName = member ? member.name : first.memberName;
         const platformName = platform ? platform.name : first.platformName;
-        const unitAmount = platform && (platform.billingMode || 'fixed') !== 'split'
-            ? toNumber(platform.price)
-            : getPlatformPriceForMonth(db, first, targetMonth);
         addWarning(
             warnings,
             'high',
             'duplicate_active_subscription',
             '同一成員同一平台本月重複啟用',
-            `${memberName} 在 ${targetMonth} 有 ${subscriptions.length} 筆 ${platformName}：${subscriptions.map(s => `${s.id || '(無 id)'}(${s.startMonth}${s.exitMonth ? `-${s.exitMonth}` : '-未退出'})`).join(', ')}`,
-            unitAmount ? `若其中一筆不是有意的第二人份，${targetMonth} 可能多收約 ${unitAmount * (subscriptions.length - 1)} 元。` : undefined
+            `${memberName} 在 ${targetMonth} 有 ${subscriptions.length} 筆 ${platformName}：${subscriptions.map(s => `${s.id || '(無 id)'}(${s.startMonth}${s.exitMonth ? `-${s.exitMonth}` : '-未退出'})`).join(', ')}`
         );
     });
 
@@ -949,11 +997,28 @@ export function findAccountingWarnings(db: Database | null, monthStr?: string): 
                     'medium',
                     'split_rounding_delta',
                     '動態均分有四捨五入差額',
-                    `${platform.name} ${targetMonth}: 總費用 ${totalCost} / ${activeCount} 人 = 每人 ${perPerson}，合計 ${collected}。`,
-                    `本月會產生 ${collected - totalCost} 元差額，需要指定誰吸收或建立尾差規則。`
+                    `${platform.name} ${targetMonth}: 總費用 ${totalCost} / ${activeCount} 人 = 每人 ${perPerson}，合計 ${collected}。`
                 );
             }
         });
+
+    const activeCycle = monthToCycle(db.currentMonth);
+    (db.payments || []).forEach(payment => {
+        if (!isValidCalendarDate(payment.date)) {
+            addWarning(warnings, 'high', 'invalid_payment_date', '付款日期不是有效日曆日期', `${payment.id || '(無 id)'} 日期=${payment.date || '(空)'}`);
+        }
+        if (!/^\d{6}$/.test(payment.cycle) || payment.cycle !== activeCycle) {
+            addWarning(warnings, 'high', 'payment_cycle_mismatch', '付款帳期不是目前帳期', `${payment.id || '(無 id)'} cycle=${payment.cycle || '(空)'}，目前=${activeCycle || '(無效)'}`);
+        }
+    });
+    (db.tempCharges || []).forEach(charge => {
+        if (charge.date !== undefined && !isValidCalendarDate(charge.date)) {
+            addWarning(warnings, 'high', 'invalid_temp_charge_date', '臨時加帳日期不是有效日曆日期', `${charge.id || '(無 id)'} 日期=${charge.date || '(空)'}`);
+        }
+        if (charge.cycle !== undefined && (!/^\d{6}$/.test(charge.cycle) || charge.cycle !== activeCycle)) {
+            addWarning(warnings, 'high', 'temp_charge_cycle_mismatch', '臨時加帳帳期不是目前帳期', `${charge.id || '(無 id)'} cycle=${charge.cycle || '(空)'}，目前=${activeCycle || '(無效)'}`);
+        }
+    });
 
     [...(db.payments || []), ...(db.tempCharges || [])].forEach(transaction => {
         const amount = toNumber(transaction.amount, NaN);
@@ -990,8 +1055,7 @@ export function findAccountingWarnings(db: Database | null, monthStr?: string): 
             problem.severity as AuditWarning['severity'],
             problem.code,
             historyWarningTitles[problem.code] || '歷史封存完整性提醒',
-            problem.detail,
-            problem.severity === 'critical' ? '請先從備份或事件鏈確認歷史帳是否被改動，再進行月結或設定更新。' : undefined
+            problem.detail
         );
     });
 

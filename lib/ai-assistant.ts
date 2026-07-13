@@ -1,4 +1,5 @@
-import { isAIConfigured } from './ai.js';
+import { z } from 'zod';
+import { generateContent, isAIConfigured } from './ai.js';
 import { queryRAG } from './rag.js';
 import {
     calculateCurrentMonthBalances,
@@ -8,8 +9,6 @@ import {
     isMemberRecord
 } from './accounting.js';
 import type { Database } from '../src/types/billing.js';
-
-const getGeminiApiKey = () => process.env.GOOGLE_GEMINI_API_KEY || '';
 
 const tools: Array<{
     type: string
@@ -246,27 +245,24 @@ function convertToGeminiContents(messages: AssistantMessage[]): { contents: Arra
     return { contents, systemInstruction };
 }
 
-interface GeminiPart {
-    text?: string
-    thoughtSignature?: string | null
-    functionCall?: {
-        id?: string
-        name: string
-        args: Record<string, unknown>
-        thoughtSignature?: string | null
-    }
-}
+const assistantResponseSchema = z.object({
+    candidates: z.array(z.object({
+        content: z.object({
+            parts: z.array(z.object({
+                text: z.string().optional(),
+                thoughtSignature: z.string().nullable().optional(),
+                functionCall: z.object({
+                    id: z.string().optional(),
+                    name: z.string(),
+                    args: z.record(z.string(), z.unknown())
+                }).optional()
+            }).passthrough())
+        }),
+        finishReason: z.string().optional()
+    }).passthrough()).optional()
+}).passthrough();
 
-interface GeminiCandidate {
-    content: {
-        parts: GeminiPart[]
-    }
-    finishReason?: string
-}
-
-interface GeminiResponse {
-    candidates?: GeminiCandidate[]
-}
+type GeminiCandidate = NonNullable<z.infer<typeof assistantResponseSchema>['candidates']>[number];
 
 function geminiResponseToAssistantMessage(candidate: GeminiCandidate): AssistantMessage {
     const parts = candidate.content.parts || [];
@@ -298,8 +294,6 @@ function geminiResponseToAssistantMessage(candidate: GeminiCandidate): Assistant
 async function callGeminiWithTools(modelName: string, messages: AssistantMessage[], geminiTools: ReturnType<typeof buildGeminiTools>, temperature = 0.2): Promise<AssistantMessage> {
     const { contents, systemInstruction } = convertToGeminiContents(messages);
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${getGeminiApiKey()}`;
-
     const body: Record<string, unknown> = {
         contents,
         tools: geminiTools,
@@ -313,23 +307,15 @@ async function callGeminiWithTools(modelName: string, messages: AssistantMessage
         body.systemInstruction = systemInstruction;
     }
 
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-
-    if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Gemini API returned ${res.status}: ${errText}`);
-    }
-
-    const data = (await res.json()) as GeminiResponse;
+    const data = await generateContent(body, assistantResponseSchema, { model: modelName });
     if (!data.candidates || data.candidates.length === 0) {
         throw new Error('No candidates returned from Gemini API');
     }
 
     const candidate = data.candidates[0];
+    if (!candidate) {
+        throw new Error('No candidates returned from Gemini API');
+    }
     if (candidate.finishReason === 'SAFETY') {
         throw new Error('Response blocked by Gemini safety filters');
     }
@@ -509,7 +495,6 @@ function executeTool(db: Database, name: string, args: Record<string, string>): 
                 return JSON.stringify({ error: `未知的工具名稱: ${name}` });
         }
     } catch (err) {
-        console.error(`Error executing tool ${name}:`, err);
         return JSON.stringify({ error: `執行工具時發生錯誤: ${(err as Error).message}` });
     }
 }
@@ -522,10 +507,9 @@ export async function handleAssistantChat(db: Database, userMessage: string, his
         };
     }
 
-    const model = (process.env.AI_MODEL || 'gemini-3.1-flash-lite').replace(/^@vertex-ai\//, '').replace(/^google\//, '');
+    const model = process.env.AI_MODEL || 'gemini-3.1-flash-lite';
     const geminiTools = buildGeminiTools();
 
-    console.log(`RAG query for: "${userMessage}"`);
     const ragResults = await queryRAG(db, userMessage, 5);
 
     let ragSystemContent = '';
@@ -567,12 +551,10 @@ ${ragSystemContent}`;
     while (loopCount < maxLoops) {
         loopCount++;
         try {
-            console.log(`Calling Gemini with function calling (Loop ${loopCount})...`);
             const assistantMessage = await callGeminiWithTools(model, messages, geminiTools, 0.2);
             messages.push(assistantMessage);
 
             if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-                console.log(`Model requested ${assistantMessage.tool_calls.length} tool calls.`);
                 for (const toolCall of assistantMessage.tool_calls) {
                     const functionName = toolCall.function.name;
                     let functionArgs: Record<string, string> = {};
@@ -581,14 +563,14 @@ ${ragSystemContent}`;
                     } catch {
                         // ignore parse errors
                     }
-                    console.log(`Executing tool: ${functionName} with args:`, functionArgs);
                     const resultText = executeTool(db, functionName, functionArgs);
-                    messages.push({
+                    const toolMessage: AssistantMessage = {
                         role: 'tool',
-                        tool_call_id: toolCall.id,
                         name: functionName,
                         content: resultText
-                    });
+                    };
+                    if (toolCall.id) toolMessage.tool_call_id = toolCall.id;
+                    messages.push(toolMessage);
                 }
                 continue;
             }
@@ -598,7 +580,6 @@ ${ragSystemContent}`;
             return { reply: finalReply, history: cleanHistory };
 
         } catch (err) {
-            console.error('Error during assistant completion loop:', err);
             return {
                 reply: `❌ 抱歉，在處理您的請求或執行工具呼叫時發生錯誤：${(err as Error).message}`,
                 history: [...history, { role: 'user', content: userMessage }]

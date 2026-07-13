@@ -23,10 +23,9 @@ jobs:
           version: 11.1.2
       - run: pnpm install --frozen-lockfile
       - run: pnpm run verify
-      - run: pnpm run lint
-      - run: pnpm run build
 
   docker:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import type { FormEvent } from 'react';
 import type { AIMessage } from '../types/billing.js';
 
 interface AiAssistantTabProps {
@@ -7,16 +8,16 @@ interface AiAssistantTabProps {
   aiInput: string;
   setAiInput: (v: string) => void;
   aiLoading: boolean;
-  handleSendChatMessage: (e: React.FormEvent) => void;
+  handleSendChatMessage: (event: FormEvent<HTMLFormElement>) => void;
 }
 
-export const AiAssistantTab: React.FC<AiAssistantTabProps> = ({
+export function AiAssistantTab({
   aiMessages,
   aiInput,
   setAiInput,
   aiLoading,
   handleSendChatMessage
-}) => {
+}: AiAssistantTabProps) {
   return (
     <div className="ai-assistant-container">
       <div className="ai-chat-header">
@@ -35,11 +36,11 @@ export const AiAssistantTab: React.FC<AiAssistantTabProps> = ({
         </div>
       </div>
 
-      <div className="ai-messages-area" id="ai-messages-container">
-        {aiMessages.map((msg, i) => (
-          <div key={i} className={`ai-message ${msg.role === 'user' ? 'user' : msg.role === 'system' ? 'system-info' : 'assistant'}`}>
+      <div className="ai-messages-area" id="ai-messages-container" aria-live="polite" aria-busy={aiLoading}>
+        {aiMessages.map((msg) => (
+          <div key={msg.id ?? `${msg.role}-${msg.content}`} className={`ai-message ${msg.role === 'user' ? 'user' : msg.role === 'system' ? 'system-info' : 'assistant'}`}>
             {msg.tool_calls && msg.tool_calls.map((t, idx) => (
-              <div key={idx} className="ai-message-tool-badge">
+              <div key={t.id ?? `${t.function.name}-${idx}`} className="ai-message-tool-badge">
                 🛠️ 呼叫工具: {t.function.name}
               </div>
             ))}
@@ -66,10 +67,10 @@ export const AiAssistantTab: React.FC<AiAssistantTabProps> = ({
 
       <div className="ai-input-area">
         <div className="ai-chat-suggestions">
-          <span className="ai-suggestion-chip" style={{ cursor: 'pointer' }} onClick={() => setAiInput("有哪些會計警告或異常嗎？")}>🔍 檢查會計警告</span>
-          <span className="ai-suggestion-chip" style={{ cursor: 'pointer' }} onClick={() => setAiInput("系統當前帳務的整體概況為何？")}>📊 系統整體概況</span>
-          <span className="ai-suggestion-chip" style={{ cursor: 'pointer' }} onClick={() => setAiInput("這個月誰還沒有結清帳款？")}>💸 誰還沒繳錢</span>
-          <span className="ai-suggestion-chip" style={{ cursor: 'pointer' }} onClick={() => setAiInput("查詢 Member Beta 的歷史付款紀錄")}>🕒 Beta 歷史紀錄</span>
+          <button type="button" className="ai-suggestion-chip" onClick={() => setAiInput("有哪些會計警告或異常嗎？")}>🔍 檢查會計警告</button>
+          <button type="button" className="ai-suggestion-chip" onClick={() => setAiInput("系統當前帳務的整體概況為何？")}>📊 系統整體概況</button>
+          <button type="button" className="ai-suggestion-chip" onClick={() => setAiInput("這個月誰還沒有結清帳款？")}>💸 誰還沒繳錢</button>
+          <button type="button" className="ai-suggestion-chip" onClick={() => setAiInput("查詢 Member Beta 的歷史付款紀錄")}>🕒 Beta 歷史紀錄</button>
         </div>
         <form className="ai-input-form" onSubmit={handleSendChatMessage}>
           <input
@@ -87,4 +88,4 @@ export const AiAssistantTab: React.FC<AiAssistantTabProps> = ({
       </div>
     </div>
   );
-};
+}

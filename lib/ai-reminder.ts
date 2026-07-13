@@ -1,5 +1,5 @@
 import { isAIConfigured, chatCompletion } from './ai.js';
-import type { Member, ReminderStyle } from '../src/types/billing.js';
+import type { Member } from '../src/types/billing.js';
 
 interface ReminderParams {
     member: Member
@@ -80,7 +80,6 @@ ${activeSubsText.length > 0 ? activeSubsText.join('\n') : '  • 本期無訂閱
             isAI: true
         };
     } catch (err) {
-        console.error('Failed to generate AI reminder, falling back:', err);
         return {
             text: fallbackText,
             isAI: false,

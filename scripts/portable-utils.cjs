@@ -93,12 +93,14 @@ function createLaunchAgentPlist({
     stdoutPath,
     stderrPath,
     envPath = process.env.PATH || '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
-    port = process.env.PORT || '3000'
+    port = process.env.PORT || '3000',
+    dataDir
 }) {
     const resolvedProjectDir = normalizePath(projectDir);
     const resolvedNodePath = normalizePath(nodePath);
     const resolvedStdoutPath = normalizePath(stdoutPath || path.join(resolvedProjectDir, 'server.log'));
     const resolvedStderrPath = normalizePath(stderrPath || path.join(resolvedProjectDir, 'server.err'));
+    const resolvedDataDir = normalizePath(dataDir || process.env.DATA_DIR || resolvedProjectDir);
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -109,7 +111,8 @@ function createLaunchAgentPlist({
     <key>ProgramArguments</key>
     <array>
         <string>${escapeXml(resolvedNodePath)}</string>
-        <string>${escapeXml(path.join(resolvedProjectDir, 'server.cjs'))}</string>
+        <string>${escapeXml(path.join(resolvedProjectDir, 'node_modules/tsx/dist/cli.mjs'))}</string>
+        <string>${escapeXml(path.join(resolvedProjectDir, 'server.ts'))}</string>
     </array>
     <key>WorkingDirectory</key>
     <string>${escapeXml(resolvedProjectDir)}</string>
@@ -119,6 +122,8 @@ function createLaunchAgentPlist({
         <string>${escapeXml(envPath)}</string>
         <key>PORT</key>
         <string>${escapeXml(port)}</string>
+        <key>DATA_DIR</key>
+        <string>${escapeXml(resolvedDataDir)}</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>

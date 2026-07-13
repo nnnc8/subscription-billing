@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-Template only. Run `npm run launchd:install` from the project root to generate
+Template only. Run `pnpm run launchd:install` from the project root to generate
 the machine-specific plist in ~/Library/LaunchAgents.
 -->
 <plist version="1.0">
@@ -11,7 +11,8 @@ the machine-specific plist in ~/Library/LaunchAgents.
     <key>ProgramArguments</key>
     <array>
         <string>__NODE_PATH__</string>
-        <string>__PROJECT_DIR__/server.cjs</string>
+        <string>__PROJECT_DIR__/node_modules/tsx/dist/cli.mjs</string>
+        <string>__PROJECT_DIR__/server.ts</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__PROJECT_DIR__</string>
@@ -19,6 +20,10 @@ the machine-specific plist in ~/Library/LaunchAgents.
     <dict>
         <key>PATH</key>
         <string>__PATH__</string>
+        <key>PORT</key>
+        <string>3000</string>
+        <key>DATA_DIR</key>
+        <string>__PROJECT_DIR__</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>

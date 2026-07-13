@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { loadLocalEnv } = require('../lib/env.cjs');
-const { isGoogleOAuthConfigured } = require('../lib/google-oauth.cjs');
+const { loadLocalEnv } = require('../lib/env');
+const { isGoogleOAuthConfigured } = require('../lib/google-oauth');
+const { loadFromSQLite } = require('../lib/db');
 
 const {
     findAccountingWarnings,
@@ -11,7 +12,7 @@ const {
     getLedgerSummary,
     getSystemSnapshot,
     normalizeDatabaseRelations
-} = require('../lib/accounting.cjs');
+} = require('../lib/accounting');
 
 const root = path.resolve(__dirname, '..');
 loadLocalEnv({ cwd: root });
@@ -20,6 +21,7 @@ const host = process.env.HOST || '127.0.0.1';
 const port = process.env.PORT || '3000';
 const dataDir = path.resolve(process.env.DATA_DIR || root);
 const dbPath = path.resolve(process.env.DB_PATH || path.join(dataDir, 'database.json'));
+const sqlitePath = path.resolve(process.env.SQLITE_PATH || path.join(dataDir, 'database.db'));
 const demoDbPath = path.join(root, 'fixtures', 'demo-database.json');
 const checks = [];
 
@@ -71,21 +73,33 @@ function checkDataDir() {
 }
 
 function readDatabase() {
+    if (fs.existsSync(sqlitePath) && fs.statSync(sqlitePath).size > 0) {
+        try {
+            const db = loadFromSQLite(sqlitePath);
+            addCheck('pass', 'Database readable', `SQLite database: ${db.currentMonth}; ${db.members.length} members`);
+            return db;
+        } catch (err) {
+            addCheck('fail', 'Database readable', err.message || 'SQLite database cannot be parsed');
+            return null;
+        }
+    }
+
     let sourcePath = dbPath;
-    let sourceLabel = 'database';
+    let sourceLabel = 'legacy database.json';
     if (!fs.existsSync(sourcePath)) {
         if (fs.existsSync(demoDbPath)) {
-            addCheck('warn', 'Database', `${dbPath} is missing; server will bootstrap from sanitized demo fixture`);
+            addCheck('warn', 'Database', `SQLite database and database.json are missing; server will bootstrap from sanitized demo fixture`);
             sourcePath = demoDbPath;
             sourceLabel = 'demo fixture';
         } else {
-            addCheck('fail', 'Database', `${dbPath} is missing and demo fixture is unavailable`);
+            addCheck('fail', 'Database', `SQLite database is missing and no fallback files are available`);
             return null;
         }
     }
 
     try {
         const db = normalizeDatabaseRelations(JSON.parse(fs.readFileSync(sourcePath, 'utf8')));
+        addCheck('warn', 'Database', `SQLite database is missing; reading legacy database.json instead`);
         addCheck('pass', 'Database readable', `${sourceLabel}: ${db.currentMonth}; ${db.members.length} members`);
         return db;
     } catch (err) {

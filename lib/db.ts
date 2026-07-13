@@ -1,242 +1,152 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import SqliteDatabase from 'better-sqlite3';
-import type { Database, Platform, Member, Subscription, Payment, TempCharge, HistoryEntry, LedgerEvent } from '../src/types/billing.js';
+import type { Database as SQLiteConnection } from 'better-sqlite3';
+import type { Database } from '../src/types/billing.js';
 import { normalizeDatabaseRelations } from './accounting.js';
 
-/**
- * Initializes the SQLite database schemas if they do not exist.
- */
-export function initSQLite(sqlitePath: string): void {
-  const db = new SqliteDatabase(sqlitePath);
+// Import repositories
+import { SettingsRepository } from './repositories/settings.js';
+import { PlatformRepository } from './repositories/platforms.js';
+import { MemberRepository } from './repositories/members.js';
+import { SubscriptionRepository } from './repositories/subscriptions.js';
+import { PaymentRepository } from './repositories/payments.js';
+import { TempChargeRepository } from './repositories/tempCharges.js';
+import { HistoryRepository } from './repositories/history.js';
+import { LedgerRepository } from './repositories/ledger.js';
 
-  // Enable WAL mode for better concurrency and write performance
-  db.pragma('journal_mode = WAL');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const migrationsDir = path.join(__dirname, 'migrations');
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS metadata (
-      key TEXT PRIMARY KEY,
-      value TEXT
-    );
+export function getCanonicalPersistedProjection(data: Database): Record<string, unknown> {
+  return {
+    settings: {
+      currentMonth: data.currentMonth || '',
+      baseMonth: data.baseMonth || '',
+      bankInfo: data.bankInfo || '',
+      reminderStyle: data.reminderStyle || 'friendly',
+      lifecycle: data.lifecycle ?? null,
+    },
+    platforms: (data.platforms || []).map(platform => ({
+      ...platform,
+      archived: Boolean(platform.archived),
+    })),
+    members: data.members || [],
+    subscriptions: (data.subscriptions || []).map(subscription => ({
+      ...subscription,
+      memberId: subscription.memberId || '',
+      platformId: subscription.platformId || '',
+      allowDuplicate: Boolean(subscription.allowDuplicate),
+    })),
+    payments: data.payments || [],
+    tempCharges: data.tempCharges || [],
+    history: data.history || [],
+    ledger: {
+      version: Number(data.ledger?.version || 1),
+      entries: data.ledger?.entries || [],
+      lastHash: data.ledger?.lastHash || '',
+      updatedAt: data.ledger?.updatedAt || '',
+    },
+  };
+}
 
-    CREATE TABLE IF NOT EXISTS platforms (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      billingMode TEXT NOT NULL,
-      price INTEGER NOT NULL,
-      totalCost INTEGER NOT NULL,
-      status TEXT,
-      archived INTEGER DEFAULT 0,
-      archivedAt TEXT,
-      archivedMonth TEXT
-    );
+function sortCanonicalValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortCanonicalValue);
+  if (value && typeof value === 'object') {
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+      const canonical = sortCanonicalValue((value as Record<string, unknown>)[key]);
+      if (canonical !== undefined && canonical !== '') sorted[key] = canonical;
+    }
+    return sorted;
+  }
+  return value;
+}
 
-    CREATE TABLE IF NOT EXISTS members (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      priorBalance INTEGER NOT NULL,
-      customFee INTEGER,
-      status TEXT,
-      archivedAt TEXT,
-      archivedMonth TEXT
-    );
+export function getCanonicalPersistedFingerprint(data: Database): string {
+  return JSON.stringify(sortCanonicalValue(getCanonicalPersistedProjection(data)));
+}
 
-    CREATE TABLE IF NOT EXISTS subscriptions (
-      id TEXT PRIMARY KEY,
-      memberId TEXT,
-      platformId TEXT,
-      memberName TEXT NOT NULL,
-      platformName TEXT NOT NULL,
-      startMonth TEXT NOT NULL,
-      exitMonth TEXT,
-      seatLabel TEXT,
-      allowDuplicate INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS payments (
-      id TEXT PRIMARY KEY,
-      memberId TEXT NOT NULL,
-      memberName TEXT NOT NULL,
-      date TEXT NOT NULL,
-      amount INTEGER NOT NULL,
-      method TEXT NOT NULL,
-      cycle TEXT NOT NULL,
-      note TEXT,
-      createdAt TEXT,
-      recordedAt TEXT,
-      status TEXT,
-      voidedAt TEXT,
-      voidedBy TEXT,
-      voidReason TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS temp_charges (
-      id TEXT PRIMARY KEY,
-      memberId TEXT NOT NULL,
-      memberName TEXT NOT NULL,
-      date TEXT,
-      amount INTEGER NOT NULL,
-      desc TEXT,
-      description TEXT,
-      cycle TEXT,
-      createdAt TEXT,
-      recordedAt TEXT,
-      status TEXT,
-      voidedAt TEXT,
-      voidedBy TEXT,
-      voidReason TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS history (
-      month TEXT PRIMARY KEY,
-      balances_json TEXT NOT NULL,
-      payments_json TEXT NOT NULL,
-      temp_charges_json TEXT NOT NULL,
-      seal_json TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS ledger_events (
-      id TEXT PRIMARY KEY,
-      at TEXT NOT NULL,
-      actor TEXT NOT NULL,
-      type TEXT NOT NULL,
-      summary TEXT NOT NULL,
-      month TEXT NOT NULL,
-      entityType TEXT,
-      entityId TEXT,
-      amount REAL,
-      payload_json TEXT,
-      hash TEXT,
-      previousHash TEXT
-    );
-  `);
-
-  db.close();
+function parseLifecycleMetadata(value: string | undefined): Database['lifecycle'] | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Database['lifecycle']
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
- * Loads the database state from SQLite relational tables.
+ * Runs pending DDL migrations in a transaction.
  */
-export function loadFromSQLite(sqlitePath: string): Database {
+export function runMigrations(sqlitePath: string, migrationsDirOverride = migrationsDir): void {
   const db = new SqliteDatabase(sqlitePath);
+  try {
+    db.pragma('journal_mode = WAL');
+    db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
 
-  // Load metadata
-  const metadataRows = db.prepare('SELECT key, value FROM metadata').all() as Array<{ key: string; value: string }>;
-  const metadataMap = new Map(metadataRows.map(r => [r.key, r.value]));
+    const appliedRows = db.prepare('SELECT version FROM schema_migrations').all() as Array<{ version: string }>;
+    const applied = new Set(appliedRows.map(r => r.version));
+
+    if (!fs.existsSync(migrationsDirOverride)) {
+      console.warn(`[migration] Migrations directory does not exist: ${migrationsDirOverride}`);
+      return;
+    }
+
+    const files = fs.readdirSync(migrationsDirOverride)
+      .filter(f => f.endsWith('.sql'))
+      .sort();
+
+    for (const file of files) {
+      const version = file.replace(/\.sql$/, '');
+      if (applied.has(version)) continue;
+
+      const sql = fs.readFileSync(path.join(migrationsDirOverride, file), 'utf8');
+
+      const runMigration = db.transaction(() => {
+        db.exec(sql);
+        db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(version, new Date().toISOString());
+      });
+
+      runMigration();
+      console.log(`[migration] Applied migration: ${file}`);
+    }
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Initializes the SQLite database and runs DDL migrations.
+ */
+export function initSQLite(sqlitePath: string): void {
+  runMigrations(sqlitePath);
+}
+
+function loadFromConnection(db: SQLiteConnection): Database {
+  const metadataMap = SettingsRepository.load(db);
 
   const currentMonth = metadataMap.get('currentMonth') || '2026/05';
   const baseMonth = metadataMap.get('baseMonth') || '2026/05';
   const bankInfo = metadataMap.get('bankInfo') || '';
   const reminderStyle = metadataMap.get('reminderStyle') || 'friendly';
+  const lifecycle = parseLifecycleMetadata(metadataMap.get('lifecycle'));
 
-  // Load platforms
-  const platformRows = db.prepare('SELECT * FROM platforms').all() as any[];
-  const platforms: Platform[] = platformRows.map(row => ({
-    id: row.id,
-    name: row.name,
-    billingMode: row.billingMode as 'fixed' | 'split',
-    price: Number(row.price),
-    totalCost: Number(row.totalCost),
-    status: row.status || undefined,
-    archived: Boolean(row.archived),
-    archivedAt: row.archivedAt || undefined,
-    archivedMonth: row.archivedMonth || undefined
-  }));
+  const platforms = PlatformRepository.findAll(db);
+  const members = MemberRepository.findAll(db);
+  const subscriptions = SubscriptionRepository.findAll(db);
+  const payments = PaymentRepository.findAll(db);
+  const tempCharges = TempChargeRepository.findAll(db);
+  const history = HistoryRepository.findAll(db);
+  const entries = LedgerRepository.findAll(db);
+  const lastEntry = entries.at(-1);
 
-  // Load members
-  const memberRows = db.prepare('SELECT * FROM members').all() as any[];
-  const members: Member[] = memberRows.map(row => ({
-    id: row.id,
-    name: row.name,
-    priorBalance: Number(row.priorBalance),
-    customFee: row.customFee !== null ? Number(row.customFee) : null,
-    status: row.status || undefined,
-    archivedAt: row.archivedAt || undefined,
-    archivedMonth: row.archivedMonth || undefined
-  }));
-
-  // Load subscriptions
-  const subRows = db.prepare('SELECT * FROM subscriptions').all() as any[];
-  const subscriptions: Subscription[] = subRows.map(row => ({
-    id: row.id,
-    memberId: row.memberId || '',
-    platformId: row.platformId || '',
-    memberName: row.memberName,
-    platformName: row.platformName,
-    startMonth: row.startMonth,
-    exitMonth: row.exitMonth || undefined,
-    seatLabel: row.seatLabel || undefined,
-    allowDuplicate: Boolean(row.allowDuplicate)
-  }));
-
-  // Load payments
-  const paymentRows = db.prepare('SELECT * FROM payments').all() as any[];
-  const payments: Payment[] = paymentRows.map(row => ({
-    id: row.id,
-    memberId: row.memberId,
-    memberName: row.memberName,
-    date: row.date,
-    amount: Number(row.amount),
-    method: row.method,
-    cycle: row.cycle,
-    note: row.note || undefined,
-    createdAt: row.createdAt || undefined,
-    recordedAt: row.recordedAt || undefined,
-    status: row.status || undefined,
-    voidedAt: row.voidedAt || undefined,
-    voidedBy: row.voidedBy || undefined,
-    voidReason: row.voidReason || undefined
-  }));
-
-  // Load temp charges
-  const chargeRows = db.prepare('SELECT * FROM temp_charges').all() as any[];
-  const tempCharges: TempCharge[] = chargeRows.map(row => ({
-    id: row.id,
-    memberId: row.memberId,
-    memberName: row.memberName,
-    date: row.date || undefined,
-    amount: Number(row.amount),
-    desc: row.desc || undefined,
-    description: row.description || undefined,
-    cycle: row.cycle || undefined,
-    createdAt: row.createdAt || undefined,
-    recordedAt: row.recordedAt || undefined,
-    status: row.status || undefined,
-    voidedAt: row.voidedAt || undefined,
-    voidedBy: row.voidedBy || undefined,
-    voidReason: row.voidReason || undefined
-  }));
-
-  // Load history
-  const historyRows = db.prepare('SELECT * FROM history').all() as any[];
-  const history: HistoryEntry[] = historyRows.map(row => ({
-    month: row.month,
-    balances: JSON.parse(row.balances_json),
-    payments: JSON.parse(row.payments_json),
-    tempCharges: JSON.parse(row.temp_charges_json),
-    seal: row.seal_json ? JSON.parse(row.seal_json) : undefined
-  }));
-
-  // Load ledger events
-  const ledgerRows = db.prepare('SELECT * FROM ledger_events ORDER BY at ASC').all() as any[];
-  const entries: LedgerEvent[] = ledgerRows.map(row => ({
-    id: row.id,
-    at: row.at,
-    actor: row.actor,
-    type: row.type,
-    summary: row.summary,
-    month: row.month || row.at.slice(0, 7).replace('-', '/'),
-    entityType: row.entityType || '',
-    entityId: row.entityId || null,
-    amount: row.amount !== null ? Number(row.amount) : null,
-    payload: row.payload_json ? JSON.parse(row.payload_json) : null,
-    hash: row.hash || '',
-    previousHash: row.previousHash || null
-  }));
-
-  db.close();
-
-  const lastHash = metadataMap.get('ledgerLastHash') || (entries.length > 0 ? entries[entries.length - 1].hash : '');
-  const updatedAt = metadataMap.get('ledgerUpdatedAt') || (entries.length > 0 ? entries[entries.length - 1].at : '');
+  const lastHash = metadataMap.get('ledgerLastHash') || lastEntry?.hash || '';
+  const updatedAt = metadataMap.get('ledgerUpdatedAt') || lastEntry?.at || '';
   const version = Number(metadataMap.get('ledgerVersion') || '1');
 
   const rawDb: Database = {
@@ -255,10 +165,23 @@ export function loadFromSQLite(sqlitePath: string): Database {
       entries,
       lastHash,
       updatedAt
-    }
+    },
+    ...(lifecycle ? { lifecycle } : {})
   };
 
   return normalizeDatabaseRelations(rawDb);
+}
+
+/**
+ * Loads the database state from SQLite relational tables.
+ */
+export function loadFromSQLite(sqlitePath: string): Database {
+  const db = new SqliteDatabase(sqlitePath);
+  try {
+    return loadFromConnection(db);
+  } finally {
+    db.close();
+  }
 }
 
 /**
@@ -266,174 +189,62 @@ export function loadFromSQLite(sqlitePath: string): Database {
  */
 export function saveToSQLite(sqlitePath: string, data: Database): void {
   const db = new SqliteDatabase(sqlitePath);
-
-  // Wrap all insertions in a transaction for atomicity and high speed
-  const runTransaction = db.transaction((dbState: Database) => {
-    // 1. Metadata
-    db.prepare('DELETE FROM metadata').run();
-    const insertMetadata = db.prepare('INSERT INTO metadata (key, value) VALUES (?, ?)');
-    insertMetadata.run('currentMonth', dbState.currentMonth || '');
-    insertMetadata.run('baseMonth', dbState.baseMonth || '');
-    insertMetadata.run('bankInfo', dbState.bankInfo || '');
-    insertMetadata.run('reminderStyle', dbState.reminderStyle || '');
-    insertMetadata.run('ledgerLastHash', dbState.ledger?.lastHash || '');
-    insertMetadata.run('ledgerUpdatedAt', dbState.ledger?.updatedAt || '');
-    insertMetadata.run('ledgerVersion', String(dbState.ledger?.version || 1));
-
-    // 2. Platforms
-    db.prepare('DELETE FROM platforms').run();
-    const insertPlatform = db.prepare(`
-      INSERT INTO platforms (id, name, billingMode, price, totalCost, status, archived, archivedAt, archivedMonth)
-      VALUES (@id, @name, @billingMode, @price, @totalCost, @status, @archived, @archivedAt, @archivedMonth)
-    `);
-    (dbState.platforms || []).forEach(p => {
-      insertPlatform.run({
-        id: p.id,
-        name: p.name,
-        billingMode: p.billingMode,
-        price: p.price,
-        totalCost: p.totalCost,
-        status: p.status || null,
-        archived: p.archived ? 1 : 0,
-        archivedAt: p.archivedAt || null,
-        archivedMonth: p.archivedMonth || null
+  const normalizedData = normalizeDatabaseRelations(data);
+  const expectedFingerprint = getCanonicalPersistedFingerprint(normalizedData);
+  try {
+    const runTransaction = db.transaction((dbState: Database) => {
+      SettingsRepository.save(db, {
+        currentMonth: dbState.currentMonth || '',
+        baseMonth: dbState.baseMonth || '',
+        bankInfo: dbState.bankInfo || '',
+        reminderStyle: dbState.reminderStyle || '',
+        ledgerLastHash: dbState.ledger?.lastHash || '',
+        ledgerUpdatedAt: dbState.ledger?.updatedAt || '',
+        ledgerVersion: String(dbState.ledger?.version || 1),
+        lifecycle: dbState.lifecycle ? JSON.stringify(dbState.lifecycle) : '',
       });
+
+      PlatformRepository.saveAll(db, dbState.platforms || []);
+      MemberRepository.saveAll(db, dbState.members || []);
+      SubscriptionRepository.saveAll(db, dbState.subscriptions || []);
+      PaymentRepository.saveAll(db, dbState.payments || []);
+      TempChargeRepository.saveAll(db, dbState.tempCharges || []);
+      HistoryRepository.saveAll(db, dbState.history || []);
+      LedgerRepository.saveAll(db, dbState.ledger?.entries || []);
+
+      const readBack = loadFromConnection(db);
+      const actualFingerprint = getCanonicalPersistedFingerprint(readBack);
+      if (actualFingerprint !== expectedFingerprint) {
+        throw new Error('SQLite canonical projection read-back mismatch');
+      }
     });
 
-    // 3. Members
-    db.prepare('DELETE FROM members').run();
-    const insertMember = db.prepare(`
-      INSERT INTO members (id, name, priorBalance, customFee, status, archivedAt, archivedMonth)
-      VALUES (@id, @name, @priorBalance, @customFee, @status, @archivedAt, @archivedMonth)
-    `);
-    (dbState.members || []).forEach(m => {
-      insertMember.run({
-        id: m.id,
-        name: m.name,
-        priorBalance: m.priorBalance,
-        customFee: m.customFee,
-        status: m.status || null,
-        archivedAt: m.archivedAt || null,
-        archivedMonth: m.archivedMonth || null
-      });
-    });
+    runTransaction(normalizedData);
+  } finally {
+    db.close();
+  }
 
-    // 4. Subscriptions
-    db.prepare('DELETE FROM subscriptions').run();
-    const insertSub = db.prepare(`
-      INSERT INTO subscriptions (id, memberId, platformId, memberName, platformName, startMonth, exitMonth, seatLabel, allowDuplicate)
-      VALUES (@id, @memberId, @platformId, @memberName, @platformName, @startMonth, @exitMonth, @seatLabel, @allowDuplicate)
-    `);
-    (dbState.subscriptions || []).forEach(s => {
-      insertSub.run({
-        id: s.id,
-        memberId: s.memberId || null,
-        platformId: s.platformId || null,
-        memberName: s.memberName,
-        platformName: s.platformName,
-        startMonth: s.startMonth,
-        exitMonth: s.exitMonth || null,
-        seatLabel: s.seatLabel || null,
-        allowDuplicate: s.allowDuplicate ? 1 : 0
-      });
-    });
-
-    // 5. Payments
-    db.prepare('DELETE FROM payments').run();
-    const insertPayment = db.prepare(`
-      INSERT INTO payments (id, memberId, memberName, date, amount, method, cycle, note, createdAt, recordedAt, status, voidedAt, voidedBy, voidReason)
-      VALUES (@id, @memberId, @memberName, @date, @amount, @method, @cycle, @note, @createdAt, @recordedAt, @status, @voidedAt, @voidedBy, @voidReason)
-    `);
-    (dbState.payments || []).forEach(p => {
-      insertPayment.run({
-        id: p.id,
-        memberId: p.memberId,
-        memberName: p.memberName,
-        date: p.date,
-        amount: p.amount,
-        method: p.method,
-        cycle: p.cycle,
-        note: p.note || null,
-        createdAt: p.createdAt || null,
-        recordedAt: p.recordedAt || null,
-        status: p.status || null,
-        voidedAt: p.voidedAt || null,
-        voidedBy: p.voidedBy || null,
-        voidReason: p.voidReason || null
-      });
-    });
-
-    // 6. Temp Charges
-    db.prepare('DELETE FROM temp_charges').run();
-    const insertCharge = db.prepare(`
-      INSERT INTO temp_charges (id, memberId, memberName, date, amount, desc, description, cycle, createdAt, recordedAt, status, voidedAt, voidedBy, voidReason)
-      VALUES (@id, @memberId, @memberName, @date, @amount, @desc, @description, @cycle, @createdAt, @recordedAt, @status, @voidedAt, @voidedBy, @voidReason)
-    `);
-    (dbState.tempCharges || []).forEach(c => {
-      insertCharge.run({
-        id: c.id,
-        memberId: c.memberId,
-        memberName: c.memberName,
-        date: c.date || null,
-        amount: c.amount,
-        desc: c.desc || null,
-        description: c.description || null,
-        cycle: c.cycle || null,
-        createdAt: c.createdAt || null,
-        recordedAt: c.recordedAt || null,
-        status: c.status || null,
-        voidedAt: c.voidedAt || null,
-        voidedBy: c.voidedBy || null,
-        voidReason: c.voidReason || null
-      });
-    });
-
-    // 7. History
-    db.prepare('DELETE FROM history').run();
-    const insertHistory = db.prepare(`
-      INSERT INTO history (month, balances_json, payments_json, temp_charges_json, seal_json)
-      VALUES (@month, @balances_json, @payments_json, @temp_charges_json, @seal_json)
-    `);
-    (dbState.history || []).forEach(h => {
-      insertHistory.run({
-        month: h.month,
-        balances_json: JSON.stringify(h.balances || []),
-        payments_json: JSON.stringify(h.payments || []),
-        temp_charges_json: JSON.stringify(h.tempCharges || []),
-        seal_json: h.seal ? JSON.stringify(h.seal) : null
-      });
-    });
-
-    // 8. Ledger Events
-    db.prepare('DELETE FROM ledger_events').run();
-    const insertEvent = db.prepare(`
-      INSERT INTO ledger_events (id, at, actor, type, summary, month, entityType, entityId, amount, payload_json, hash, previousHash)
-      VALUES (@id, @at, @actor, @type, @summary, @month, @entityType, @entityId, @amount, @payload_json, @hash, @previousHash)
-    `);
-    ((dbState.ledger && dbState.ledger.entries) || []).forEach((e: LedgerEvent) => {
-      insertEvent.run({
-        id: e.id,
-        at: e.at,
-        actor: e.actor,
-        type: e.type,
-        summary: e.summary,
-        month: e.month || '',
-        entityType: e.entityType || null,
-        entityId: e.entityId || null,
-        amount: e.amount !== undefined && e.amount !== null ? e.amount : null,
-        payload_json: e.payload ? JSON.stringify(e.payload) : null,
-        hash: e.hash || null,
-        previousHash: e.previousHash || null
-      });
-    });
-  });
-
-  runTransaction(data);
-  db.close();
+  // Verify the committed state again from a fresh connection.
+  const writtenDb = loadFromSQLite(sqlitePath);
+  if (getCanonicalPersistedFingerprint(writtenDb) !== expectedFingerprint) {
+    throw new Error('SQLite committed canonical projection mismatch');
+  }
 }
 
 /**
- * Migrates data from JSON file into SQLite database if the SQLite database is empty.
+ * Backup the SQLite database file to a destination path using better-sqlite3's backup method.
+ */
+export async function backupSQLite(sqlitePath: string, backupPath: string): Promise<void> {
+  const db = new SqliteDatabase(sqlitePath);
+  try {
+    await db.backup(backupPath);
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Migrates data from JSON file into SQLite database.
  */
 export function migrateJsonToSQLite(jsonPath: string, sqlitePath: string): boolean {
   try {

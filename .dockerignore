@@ -5,9 +5,13 @@ dist
 !.env.example
 database.json
 database.json.*.tmp
+*.db
+*.db-wal
+*.db-shm
 backups
 data
 *.log
+*.err
 .git
 .github
 docs

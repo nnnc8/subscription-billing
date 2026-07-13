@@ -31,6 +31,19 @@ function freshDb(): Database {
     return normalizeDatabaseRelations(JSON.parse(fs.readFileSync(dbPath, 'utf8')));
 }
 
+function monthParts(value: string): [number, number] {
+    const year = Number(value.slice(0, 4));
+    const month = Number(value.slice(5, 7));
+    if (!Number.isInteger(year) || !Number.isInteger(month)) throw new Error(`Invalid fixture month: ${value}`);
+    return [year, month];
+}
+
+function last<T>(items: T[], label: string): T {
+    const value = items.at(-1);
+    if (value === undefined) throw new Error(`Fixture invariant failed: ${label} is empty`);
+    return value;
+}
+
 // ---------------------------------------------------------------------------
 // 1. getSystemMonth — timezone-correct YYYY/MM
 // ---------------------------------------------------------------------------
@@ -83,7 +96,7 @@ describe('advanceMonthOnce — single month advance', () => {
 
     it('advances currentMonth by one when db is behind', () => {
         const beforeMonth = db.currentMonth;
-        const [year, month] = beforeMonth.split('/').map(Number);
+        const [year, month] = monthParts(beforeMonth);
         const expectedNext = month === 12
             ? `${year + 1}/01`
             : `${year}/${String(month + 1).padStart(2, '0')}`;
@@ -107,7 +120,7 @@ describe('advanceMonthOnce — single month advance', () => {
     });
 
     it('is a no-op when db.currentMonth is ahead of systemMonth', () => {
-        const [y, m] = db.currentMonth.split('/').map(Number);
+        const [y, m] = monthParts(db.currentMonth);
         const olderMonth = m === 1 ? `${y - 1}/12` : `${y}/${String(m - 1).padStart(2, '0')}`;
         const result = advanceMonthOnce(db, olderMonth);
 
@@ -116,7 +129,7 @@ describe('advanceMonthOnce — single month advance', () => {
     });
 
     it('clears payments and tempCharges after advance', () => {
-        const [y, m] = db.currentMonth.split('/').map(Number);
+        const [y, m] = monthParts(db.currentMonth);
         const nextMonth = m === 12 ? `${y + 1}/01` : `${y}/${String(m + 1).padStart(2, '0')}`;
 
         // Ensure there are some payments to clear
@@ -129,14 +142,14 @@ describe('advanceMonthOnce — single month advance', () => {
 
     it('adds a history entry for the closed month', () => {
         const closedMonth = db.currentMonth;
-        const [y, m] = closedMonth.split('/').map(Number);
+        const [y, m] = monthParts(closedMonth);
         const nextMonth = m === 12 ? `${y + 1}/01` : `${y}/${String(m + 1).padStart(2, '0')}`;
         const historyBefore = db.history.length;
 
         advanceMonthOnce(db, nextMonth);
 
         expect(db.history.length).toBe(historyBefore + 1);
-        expect(db.history[db.history.length - 1].month).toBe(closedMonth);
+        expect(last(db.history, 'history').month).toBe(closedMonth);
     });
 
     it('blocks when target month is already in history (idempotency guard)', () => {
@@ -148,7 +161,7 @@ describe('advanceMonthOnce — single month advance', () => {
             tempCharges: [],
         });
 
-        const [y, m] = db.currentMonth.split('/').map(Number);
+        const [y, m] = monthParts(db.currentMonth);
         const nextMonth = m === 12 ? `${y + 1}/01` : `${y}/${String(m + 1).padStart(2, '0')}`;
         const result = advanceMonthOnce(db, nextMonth);
 
@@ -158,12 +171,13 @@ describe('advanceMonthOnce — single month advance', () => {
     });
 
     it('blocks when ledger integrity fails', () => {
-        const [y, m] = db.currentMonth.split('/').map(Number);
+        const [y, m] = monthParts(db.currentMonth);
         const nextMonth = m === 12 ? `${y + 1}/01` : `${y}/${String(m + 1).padStart(2, '0')}`;
 
         // Corrupt the ledger
         if (db.ledger.entries.length > 0) {
-            (db.ledger.entries[db.ledger.entries.length - 1] as unknown as Record<string, unknown>).hash = 'invalid_hash';
+            const lastEntry = db.ledger.entries.at(-1);
+            if (lastEntry) (lastEntry as unknown as Record<string, unknown>).hash = 'invalid_hash';
         } else {
             db.ledger.entries.push({
                 id: 'bad_entry',
@@ -188,7 +202,7 @@ describe('advanceMonthOnce — single month advance', () => {
     });
 
     it('does NOT block on unpaid balances — rolls them forward as priorBalance', () => {
-        const [y, m] = db.currentMonth.split('/').map(Number);
+        const [y, m] = monthParts(db.currentMonth);
         const nextMonth = m === 12 ? `${y + 1}/01` : `${y}/${String(m + 1).padStart(2, '0')}`;
 
         // Clear all payments to simulate unpaid members
@@ -207,7 +221,7 @@ describe('advanceMonthOnce — single month advance', () => {
     });
 
     it('writes lifecycle metadata after successful advance', () => {
-        const [y, m] = db.currentMonth.split('/').map(Number);
+        const [y, m] = monthParts(db.currentMonth);
         const nextMonth = m === 12 ? `${y + 1}/01` : `${y}/${String(m + 1).padStart(2, '0')}`;
 
         advanceMonthOnce(db, nextMonth);
@@ -226,13 +240,13 @@ describe('advanceMonthOnce — single month advance', () => {
 describe('priorBalance rollover formula after advance', () => {
     it('endingBalance = priorBalance + subscriptionFee + tempCharge - paid', () => {
         const db = freshDb();
-        const [y, mo] = db.currentMonth.split('/').map(Number);
+        const [y, mo] = monthParts(db.currentMonth);
         const nextMonth = mo === 12 ? `${y + 1}/01` : `${y}/${String(mo + 1).padStart(2, '0')}`;
 
         advanceMonthOnce(db, nextMonth);
 
         // The history entry should have balances matching the formula
-        const lastHistory = db.history[db.history.length - 1];
+        const lastHistory = last(db.history, 'history');
         lastHistory.balances.forEach(b => {
             const expected = b.priorBalance + b.subscriptionFee + b.tempCharge - b.paid;
             expect(b.endingBalance).toBeCloseTo(expected, 5);
@@ -253,14 +267,15 @@ describe('priorBalance rollover formula after advance', () => {
         const db = freshDb();
 
         // Pick any member and remove all their payments
-        const member = db.members[0];
+        const member = db.members.at(0);
+        if (!member) throw new Error('Fixture invariant failed: first member is missing');
         db.payments = db.payments.filter(p =>
             p.memberId !== member.id && p.memberName !== member.name
         );
 
         const priorBefore = member.priorBalance;
 
-        const [y, mo] = db.currentMonth.split('/').map(Number);
+        const [y, mo] = monthParts(db.currentMonth);
         const nextMonth = mo === 12 ? `${y + 1}/01` : `${y}/${String(mo + 1).padStart(2, '0')}`;
         advanceMonthOnce(db, nextMonth);
 
@@ -281,7 +296,7 @@ describe('runLifecycleCatchUp — multi-month catch-up', () => {
 
     it('catches up across 3 months', () => {
         const db = freshDb();
-        const [y, m] = db.currentMonth.split('/').map(Number);
+        const [y, m] = monthParts(db.currentMonth);
 
         const oldYear = m <= 3 ? y - 1 : y;
         const oldMonth = ((m - 4 + 12) % 12) + 1;
@@ -359,8 +374,10 @@ describe('runLifecycleCatchUp — multi-month catch-up', () => {
         vi.useRealTimers();
 
         expect(results).toHaveLength(1);
-        expect(results[0].advanced).toBe(false);
-        expect(results[0].alreadyCurrent).toBe(true);
+        const firstResult = results.at(0);
+        if (!firstResult) throw new Error('Lifecycle result invariant failed: missing result');
+        expect(firstResult.advanced).toBe(false);
+        expect(firstResult.alreadyCurrent).toBe(true);
     });
 });
 

@@ -48,7 +48,10 @@ describe('Privacy and sensitive file leak checks', () => {
         const output = execFileSync('git', ['grep', '-n', term, '--', ':!pnpm-lock.yaml'], { encoding: 'utf8' });
         throw new Error(`Sensitive term "${term}" found in tracked files:\n${output}`);
       } catch (err) {
-        if ((err as any).status === 1) continue;
+        const status = typeof err === 'object' && err !== null && 'status' in err && typeof err.status === 'number'
+          ? err.status
+          : undefined;
+        if (status === 1) continue;
         throw err;
       }
     }

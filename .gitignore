@@ -21,6 +21,8 @@ dist-ssr
 database.json
 database.db
 *.db
+*.db-shm
+*.db-wal
 database.json.*.tmp
 session_handoff.md
 data/

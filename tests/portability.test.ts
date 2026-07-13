@@ -1,12 +1,20 @@
 import { describe, it, expect } from 'vitest';
-// @ts-expect-error: import legacy .cjs utilities for portability unit tests
-import {
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const {
   buildLaunchPath,
   createLaunchAgentPlist,
   escapeXml,
   findNodePath,
   getLaunchAgentPath
-} from '../scripts/portable-utils.cjs';
+} = require('../scripts/portable-utils.cjs') as {
+  buildLaunchPath: (options: { homeDir: string; nodePath: string; envPath: string }) => string;
+  createLaunchAgentPlist: (options: { projectDir: string; nodePath: string; stdoutPath: string; stderrPath: string; envPath: string }) => string;
+  escapeXml: (value: string) => string;
+  findNodePath: (options: { env: NodeJS.ProcessEnv; execPath: string; existsSync: (candidate: string) => boolean }) => string;
+  getLaunchAgentPath: (homeDir: string) => string;
+};
 
 describe('macOS launch agent and path lookup portability helpers', () => {
   it('should generate a valid Plist template string', () => {

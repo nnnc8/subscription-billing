@@ -30,6 +30,7 @@ import {
     getHistoryIntegrity,
     monthToCode,
     getLedgerSummary,
+    normalizeDatabaseRelations,
     MONTH_RE,
 } from './accounting.js';
 
@@ -90,7 +91,8 @@ export interface MonthCloseResult {
 
 export function executeMonthClose(db: Database): MonthCloseResult {
     const currentMonth = db.currentMonth;
-    const [year, month] = currentMonth.split('/').map(Number);
+    const year = Number(currentMonth.slice(0, 4));
+    const month = Number(currentMonth.slice(5, 7));
 
     // Calculate balances and update members' priorBalance
     const balancesReport = calculateCurrentMonthBalances(db);
@@ -112,6 +114,9 @@ export function executeMonthClose(db: Database): MonthCloseResult {
         tempCharges: [...db.tempCharges],
     };
     db.history.push(newHistoryEntry);
+
+    // Normalize database relations to assign stable IDs and normalize records before sealing
+    normalizeDatabaseRelations(db);
 
     const advancedAt = new Date().toISOString();
     ensureHistorySeals(db, { sealedAt: advancedAt, reason: 'month.auto-advanced' });

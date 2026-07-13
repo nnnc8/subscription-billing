@@ -33,6 +33,18 @@ function freshDb(): Database {
     return normalizeDatabaseRelations(JSON.parse(fs.readFileSync(dbPath, 'utf8')));
 }
 
+function first<T>(items: T[], label: string): T {
+    const value = items.at(0);
+    if (value === undefined) throw new Error(`Fixture invariant failed: ${label} is empty`);
+    return value;
+}
+
+function last<T>(items: T[], label: string): T {
+    const value = items.at(-1);
+    if (value === undefined) throw new Error(`Fixture invariant failed: ${label} is empty`);
+    return value;
+}
+
 // ---------------------------------------------------------------------------
 // Mock Gemini (to avoid real API calls in tests)
 // ---------------------------------------------------------------------------
@@ -73,7 +85,7 @@ beforeEach(() => {
 describe('validateProposal — member resolution', () => {
     it('should pass for exact member name match', () => {
         const db = freshDb();
-        const member = db.members[0];
+        const member = first(db.members, 'members');
         const raw = { kind: 'payment', memberName: member.name, amount: 200, confidence: 0.95, reason: 'test' };
         const result = validateProposal(raw, db, new Date().toISOString());
         expect(result.blockReasons).toHaveLength(0);
@@ -91,7 +103,7 @@ describe('validateProposal — member resolution', () => {
     it('should warn (not block) on fuzzy single match', () => {
         const db = freshDb();
         // Use a substring of the first member name
-        const member = db.members[0];
+        const member = first(db.members, 'members');
         const shortName = member.name.split(' ')[0]; // e.g. "Member"
         const raw = { kind: 'payment', memberName: shortName, amount: 100, confidence: 0.85, reason: 'test' };
         const result = validateProposal(raw, db, new Date().toISOString());
@@ -110,7 +122,7 @@ describe('validateProposal — member resolution', () => {
 describe('validateProposal — amount checks', () => {
     it('should block payment with missing amount', () => {
         const db = freshDb();
-        const member = db.members[0];
+        const member = first(db.members, 'members');
         const raw = { kind: 'payment', memberName: member.name, confidence: 0.9, reason: 'test' };
         const result = validateProposal(raw, db, new Date().toISOString());
         expect(result.ok).toBe(false);
@@ -119,7 +131,7 @@ describe('validateProposal — amount checks', () => {
 
     it('should block payment with zero amount', () => {
         const db = freshDb();
-        const member = db.members[0];
+        const member = first(db.members, 'members');
         const raw = { kind: 'payment', memberName: member.name, amount: 0, confidence: 0.9, reason: 'test' };
         const result = validateProposal(raw, db, new Date().toISOString());
         expect(result.ok).toBe(false);
@@ -127,7 +139,7 @@ describe('validateProposal — amount checks', () => {
 
     it('should block payment with negative amount', () => {
         const db = freshDb();
-        const member = db.members[0];
+        const member = first(db.members, 'members');
         const raw = { kind: 'payment', memberName: member.name, amount: -100, confidence: 0.9, reason: 'test' };
         const result = validateProposal(raw, db, new Date().toISOString());
         expect(result.ok).toBe(false);
@@ -141,7 +153,7 @@ describe('validateProposal — amount checks', () => {
 describe('validateProposal — subscription checks', () => {
     it('should block subscription with unknown platform', () => {
         const db = freshDb();
-        const member = db.members[0];
+        const member = first(db.members, 'members');
         const raw = { kind: 'subscription', memberName: member.name, platformName: '未知平台XYZ', month: db.currentMonth, confidence: 0.9, reason: 'test' };
         const result = validateProposal(raw, db, new Date().toISOString());
         expect(result.ok).toBe(false);
@@ -150,8 +162,8 @@ describe('validateProposal — subscription checks', () => {
 
     it('should block subscription with invalid month format', () => {
         const db = freshDb();
-        const member = db.members[0];
-        const platform = db.platforms[0];
+        const member = first(db.members, 'members');
+        const platform = first(db.platforms, 'platforms');
         const raw = { kind: 'subscription', memberName: member.name, platformName: platform.name, month: '2026-06', confidence: 0.9, reason: 'test' };
         const result = validateProposal(raw, db, new Date().toISOString());
         expect(result.ok).toBe(false);
@@ -211,7 +223,7 @@ describe('classifyProposalForAutoApply', () => {
 describe('applyPaymentProposal', () => {
     it('should add payment to DB and create ledger event', () => {
         const db = freshDb();
-        const member = db.members[0];
+        const member = first(db.members, 'members');
         const initialPaymentCount = db.payments.length;
         const initialLedgerCount = db.ledger.entries.length;
 
@@ -242,12 +254,12 @@ describe('applyPaymentProposal', () => {
         expect(db.payments.length).toBe(initialPaymentCount + 1);
         expect(db.ledger.entries.length).toBe(initialLedgerCount + 1);
 
-        const newPayment = db.payments[db.payments.length - 1];
+        const newPayment = last(db.payments, 'payments');
         expect(newPayment.amount).toBe(300);
         expect(newPayment.memberName).toBe(member.name);
         expect(newPayment.memberId).toBe(member.id);
 
-        const ledgerEvent = db.ledger.entries[db.ledger.entries.length - 1];
+        const ledgerEvent = last(db.ledger.entries, 'ledger entries');
         expect(ledgerEvent.type).toBe('payment.created');
         expect(ledgerEvent.summary).toContain('[AI自動]');
         expect(ledgerEvent.id).toBe(result.ledgerEventId);
@@ -255,7 +267,7 @@ describe('applyPaymentProposal', () => {
 
     it('should NOT contain API key in ledger payload', () => {
         const db = freshDb();
-        const member = db.members[0];
+        const member = first(db.members, 'members');
         const apiKey = 'super-secret-key-12345';
         process.env.GOOGLE_GEMINI_API_KEY = apiKey;
 
@@ -273,7 +285,7 @@ describe('applyPaymentProposal', () => {
 
         applyPaymentProposal(proposal, db);
 
-        const lastEvent = db.ledger.entries[db.ledger.entries.length - 1];
+        const lastEvent = last(db.ledger.entries, 'ledger entries');
         const eventJson = JSON.stringify(lastEvent);
         expect(eventJson).not.toContain(apiKey);
 
@@ -282,7 +294,7 @@ describe('applyPaymentProposal', () => {
 
     it('should block duplicate payment via findRecentDuplicateTransaction', () => {
         const db = freshDb();
-        const member = db.members[0];
+        const member = first(db.members, 'members');
         const now = new Date().toISOString();
 
         // Add a near-duplicate payment
@@ -291,7 +303,7 @@ describe('applyPaymentProposal', () => {
             memberId: member.id,
             memberName: member.name,
             amount: 270,
-            date: now.split('T')[0],
+            date: now.slice(0, 10),
             method: '轉帳',
             cycle: db.currentMonth.replace('/', ''),
             note: '',
@@ -306,7 +318,7 @@ describe('applyPaymentProposal', () => {
             confidence: 0.95,
             reason: 'test',
             warnings: [],
-            payload: { memberId: member.id, memberName: member.name, amount: 270, date: now.split('T')[0], method: '轉帳', cycle: db.currentMonth.replace('/', ''), note: '' },
+            payload: { memberId: member.id, memberName: member.name, amount: 270, date: now.slice(0, 10), method: '轉帳', cycle: db.currentMonth.replace('/', ''), note: '' },
             status: 'pending',
             createdAt: new Date(Date.now() + 60000).toISOString(), // 1 min later
         };
@@ -324,7 +336,7 @@ describe('applyPaymentProposal', () => {
 describe('applyTempChargeProposal', () => {
     it('should add temp charge to DB and create ledger event', () => {
         const db = freshDb();
-        const member = db.members[0];
+        const member = first(db.members, 'members');
         const initialCount = db.tempCharges.length;
 
         const proposal: AutomationProposal = {
@@ -343,7 +355,7 @@ describe('applyTempChargeProposal', () => {
 
         expect(result.ok).toBe(true);
         expect(db.tempCharges.length).toBe(initialCount + 1);
-        const newCharge = db.tempCharges[db.tempCharges.length - 1];
+        const newCharge = last(db.tempCharges, 'temp charges');
         expect(newCharge.amount).toBe(50);
         expect(newCharge.desc).toBe('網域費');
     });
@@ -386,7 +398,7 @@ describe('applySubscriptionProposal', () => {
 
         expect(result.ok).toBe(true);
         expect(db.subscriptions.length).toBe(initialCount + 1);
-        const newSub = db.subscriptions[db.subscriptions.length - 1];
+        const newSub = last(db.subscriptions, 'subscriptions');
         expect(newSub.startMonth).toBe(db.currentMonth);
         expect(newSub.memberId).toBe(member.id);
     });
@@ -428,7 +440,7 @@ describe('applySubscriptionProposal', () => {
 describe('parseAndClassifyProposals (mocked Gemini)', () => {
     it('should auto-apply high-confidence payment', async () => {
         const db = freshDb();
-        const member = db.members[0];
+        const member = first(db.members, 'members');
 
         mockGeminiResponse([{
             kind: 'payment',
@@ -445,13 +457,13 @@ describe('parseAndClassifyProposals (mocked Gemini)', () => {
         expect(result.applied.length).toBe(1);
         expect(result.pending.length).toBe(0);
         expect(result.rejected.length).toBe(0);
-        expect(result.applied[0].kind).toBe('payment');
-        expect(result.applied[0].ledgerEventId).toBeDefined();
+        expect(first(result.applied, 'applied proposals').kind).toBe('payment');
+        expect(first(result.applied, 'applied proposals').ledgerEventId).toBeDefined();
     });
 
     it('should put low-confidence proposal into pending', async () => {
         const db = freshDb();
-        const member = db.members[0];
+        const member = first(db.members, 'members');
 
         mockGeminiResponse([{
             kind: 'payment',
@@ -485,12 +497,12 @@ describe('parseAndClassifyProposals (mocked Gemini)', () => {
         const result = await parseAndClassifyProposals('test text', db, FAKE_API_KEY, 'auto');
 
         expect(result.rejected.length).toBe(1);
-        expect(result.rejected[0].rejectReason).toContain('找不到成員');
+        expect(first(result.rejected, 'rejected proposals').rejectReason).toContain('找不到成員');
     });
 
     it('should reject proposal with missing amount', async () => {
         const db = freshDb();
-        const member = db.members[0];
+        const member = first(db.members, 'members');
 
         mockGeminiResponse([{
             kind: 'payment',
@@ -503,14 +515,15 @@ describe('parseAndClassifyProposals (mocked Gemini)', () => {
         const result = await parseAndClassifyProposals('test text', db, FAKE_API_KEY, 'auto');
 
         expect(result.rejected.length).toBe(1);
-        expect(result.rejected[0].rejectReason).toContain('金額');
+        expect(first(result.rejected, 'rejected proposals').rejectReason).toContain('金額');
     });
 
     it('should handle multiple events in a single parse', async () => {
         const db = freshDb();
-        const member0 = db.members[0];
-        const member1 = db.members[1];
-        const platform = db.platforms[0];
+        const member0 = first(db.members, 'members');
+        const member1 = db.members.at(1);
+        if (!member1) throw new Error('Fixture invariant failed: second member is missing');
+        const platform = first(db.platforms, 'platforms');
 
         mockGeminiResponse([
             { kind: 'payment', memberName: member0.name, amount: 270, confidence: 0.96, reason: 'test', warnings: [] },
@@ -528,7 +541,7 @@ describe('parseAndClassifyProposals (mocked Gemini)', () => {
 
     it('should put all proposals into pending in review mode', async () => {
         const db = freshDb();
-        const member = db.members[0];
+        const member = first(db.members, 'members');
 
         mockGeminiResponse([{
             kind: 'payment',
@@ -569,7 +582,7 @@ describe('parseAndClassifyProposals (mocked Gemini)', () => {
 describe('Security: API key isolation', () => {
     it('ledger payload must not contain API key string', () => {
         const db = freshDb();
-        const member = db.members[0];
+        const member = first(db.members, 'members');
         const apiKey = 'sk-tagtoo-secret-key-test-1234';
         process.env.GOOGLE_GEMINI_API_KEY = apiKey;
 

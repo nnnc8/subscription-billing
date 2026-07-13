@@ -9,7 +9,7 @@ const {
     getHistoryIntegrity,
     getSystemSnapshot,
     normalizeDatabaseRelations
-} = require('./lib/accounting.cjs');
+} = require('./lib/accounting');
 
 const dbPath = process.env.TEST_DB_PATH || path.join(__dirname, 'fixtures', 'demo-database.json');
 const db = normalizeDatabaseRelations(JSON.parse(fs.readFileSync(dbPath, 'utf8')));
@@ -63,7 +63,7 @@ const historyIntegrity = getHistoryIntegrity(db);
 assert.strictEqual(historyIntegrity.ok, true);
 assert.strictEqual(historyIntegrity.sealedCount, db.history.length);
 
-const serverSource = fs.readFileSync(path.join(__dirname, 'server.cjs'), 'utf8');
+const serverSource = fs.readFileSync(path.join(__dirname, 'server.ts'), 'utf8');
 assert(!serverSource.includes('recalculateHistoryBalances'));
 assert(!serverSource.includes('db.payments = db.payments.filter(p => p.id !== id)'));
 assert(!serverSource.includes('db.tempCharges = db.tempCharges.filter(c => c.id !== id)'));

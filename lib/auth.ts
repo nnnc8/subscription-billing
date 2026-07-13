@@ -58,7 +58,11 @@ export function verifySessionCookieValue(value: string, { secret, now = Date.now
         return { ok: false, reason: 'malformed' };
     }
 
-    const [payload, signature] = parts;
+    const payload = parts[0];
+    const signature = parts[1];
+    if (!payload || !signature) {
+        return { ok: false, reason: 'malformed' };
+    }
     const expectedSignature = signPayload(payload, secret);
     const signatureBuffer = Buffer.from(signature);
     const expectedBuffer = Buffer.from(expectedSignature);

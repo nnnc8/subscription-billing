@@ -6,6 +6,46 @@ const DEFAULT_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 
 export const GOOGLE_SCOPE = 'openid email profile';
 
+export function normalizeOrigin(value: string | undefined): string | null {
+    try {
+        const url = new URL(String(value || '').trim());
+        if (!['http:', 'https:'].includes(url.protocol)
+            || url.pathname !== '/'
+            || url.search
+            || url.hash
+            || url.username
+            || url.password) return null;
+        return url.origin;
+    } catch {
+        return null;
+    }
+}
+
+export function getPublicOrigin(env: Record<string, string | undefined> = process.env): string | null {
+    return normalizeOrigin(env.PUBLIC_ORIGIN);
+}
+
+export function isValidGoogleRedirectUri(value: string | undefined): boolean {
+    try {
+        const url = new URL(String(value || '').trim());
+        return ['http:', 'https:'].includes(url.protocol)
+            && url.pathname === '/api/auth/callback'
+            && !url.search
+            && !url.hash
+            && !url.username
+            && !url.password;
+    } catch {
+        return false;
+    }
+}
+
+export function resolveGoogleRedirectUri(env: Record<string, string | undefined> = process.env): string | null {
+    const configured = String(env.GOOGLE_REDIRECT_URI || '').trim();
+    if (isValidGoogleRedirectUri(configured)) return configured;
+    const origin = getPublicOrigin(env);
+    return origin ? `${origin}/api/auth/callback` : null;
+}
+
 function parseAllowedEmails(value: string | undefined): Set<string> {
     return new Set(String(value || '')
         .split(',')
@@ -39,7 +79,8 @@ export function buildGoogleAuthUrl({ config, redirectUri, state }: { config: Goo
     url.searchParams.set('state', state);
     url.searchParams.set('access_type', 'online');
     if (config.allowedEmails.size === 1) {
-        url.searchParams.set('login_hint', [...config.allowedEmails][0]);
+        const [allowedEmail] = config.allowedEmails;
+        if (allowedEmail) url.searchParams.set('login_hint', allowedEmail);
     } else {
         url.searchParams.set('prompt', 'select_account');
     }

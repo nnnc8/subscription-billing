@@ -3,28 +3,28 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
+export DATA_DIR="${DATA_DIR:-$SCRIPT_DIR}"
 
-if command -v pnpm >/dev/null 2>&1; then
-  PM="pnpm"
-elif command -v corepack >/dev/null 2>&1; then
+if ! command -v pnpm >/dev/null 2>&1; then
+  if ! command -v corepack >/dev/null 2>&1; then
+    echo "找不到 pnpm，請先安裝 pnpm 11+ 或啟用 Corepack。"
+    exit 1
+  fi
   corepack enable
-  PM="pnpm"
-else
-  PM="npm"
 fi
 
-echo "Installing dependencies with $PM..."
-"$PM" install
+echo "Installing dependencies with pnpm..."
+pnpm install
 
 echo "Building frontend..."
-"$PM" run build
+pnpm run build
 
 echo "Running health check..."
-"$PM" run doctor
+pnpm run doctor
 
 if [[ "${1:-}" == "--launchd" ]]; then
   echo "Installing macOS LaunchAgent..."
-  "$PM" run launchd:install
+  pnpm run launchd:install
 fi
 
-echo "Setup complete. Start with: $PM run start"
+echo "Setup complete. Start with: ./start.sh"

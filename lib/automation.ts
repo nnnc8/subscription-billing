@@ -13,6 +13,8 @@
  */
 
 import crypto from 'node:crypto';
+import { z } from 'zod';
+import { generateContent } from './ai.js';
 import {
     findRecentDuplicateTransaction,
     resolveMember,
@@ -107,35 +109,37 @@ const RECORD_BILLING_EVENTS_TOOL = {
 // Types for Gemini raw response
 // ---------------------------------------------------------------------------
 
-interface RawGeminiEvent {
-    kind?: string;
-    memberName?: string;
-    platformName?: string;
-    amount?: number;
-    date?: string;
-    month?: string;
-    note?: string;
-    confidence?: number;
-    reason?: string;
-    warnings?: string[];
-}
+const rawGeminiEventSchema = z.object({
+    kind: z.string().optional(),
+    memberName: z.string().optional(),
+    platformName: z.string().optional(),
+    amount: z.number().optional(),
+    date: z.string().optional(),
+    month: z.string().optional(),
+    note: z.string().optional(),
+    confidence: z.number().optional(),
+    reason: z.string().optional(),
+    warnings: z.array(z.string()).optional()
+}).passthrough();
 
-interface GeminiParsePart {
-    functionCall?: {
-        name: string;
-        args: Record<string, unknown>;
-    };
-    text?: string;
-}
+type RawGeminiEvent = z.infer<typeof rawGeminiEventSchema>;
 
-interface GeminiParseResponse {
-    candidates?: Array<{
-        content?: {
-            parts?: GeminiParsePart[];
-        };
-        finishReason?: string;
-    }>;
-}
+const geminiParseResponseSchema = z.object({
+    candidates: z.array(z.object({
+        content: z.object({
+            parts: z.array(z.object({
+                functionCall: z.object({
+                    name: z.string(),
+                    args: z.object({
+                        events: z.array(rawGeminiEventSchema).optional(),
+                        parseErrors: z.array(z.string()).optional()
+                    }).passthrough()
+                }).optional(),
+                text: z.string().optional()
+            }).passthrough())
+        }).optional()
+    }).passthrough()).optional()
+}).passthrough();
 
 // ---------------------------------------------------------------------------
 // Gemini Caller
@@ -145,8 +149,7 @@ async function callGeminiForParsing(text: string, apiKey: string): Promise<{
     events: RawGeminiEvent[];
     parseErrors: string[];
 }> {
-    const model = (process.env.AI_MODEL || 'gemini-2.0-flash').replace(/^@vertex-ai\//, '').replace(/^google\//, '');
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const model = process.env.AI_MODEL || 'gemini-2.0-flash';
 
     const systemInstruction = {
         parts: [{
@@ -170,18 +173,7 @@ async function callGeminiForParsing(text: string, apiKey: string): Promise<{
         generationConfig: { temperature: 0.1, maxOutputTokens: 2000 },
     };
 
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Gemini API error ${res.status}: ${errText.slice(0, 200)}`);
-    }
-
-    const data = (await res.json()) as GeminiParseResponse;
+    const data = await generateContent(body, geminiParseResponseSchema, { model, apiKey });
     const candidate = data.candidates?.[0];
     if (!candidate?.content?.parts) {
         throw new Error('Gemini 回傳格式異常：無有效 candidate');
@@ -194,7 +186,7 @@ async function callGeminiForParsing(text: string, apiKey: string): Promise<{
         throw new Error(`Gemini 未呼叫 function tool，文字回應：${textReply.slice(0, 200)}`);
     }
 
-    const args = funcCallPart.functionCall.args as { events?: RawGeminiEvent[]; parseErrors?: string[] };
+    const args = funcCallPart.functionCall.args;
     return {
         events: Array.isArray(args.events) ? args.events : [],
         parseErrors: Array.isArray(args.parseErrors) ? args.parseErrors : [],
@@ -239,7 +231,8 @@ export function validateProposal(
         } else if (!exactMatch && fuzzyMatches.length > 1) {
             warnings.push(`「${memberName}」模糊匹配到多個成員：${fuzzyMatches.map(m => m.name).join('、')}`);
         } else if (!exactMatch && fuzzyMatches.length === 1) {
-            warnings.push(`以「${fuzzyMatches[0].name}」代入（原文：${memberName}）`);
+            const fuzzyMatch = fuzzyMatches[0];
+            if (fuzzyMatch) warnings.push(`以「${fuzzyMatch.name}」代入（原文：${memberName}）`);
         }
     }
 
@@ -287,7 +280,7 @@ export function validateProposal(
                 memberId: member.id,
                 memberName: member.name,
                 amount: raw.amount,
-                date: raw.date || new Date().toISOString().split('T')[0],
+                date: raw.date || new Date().toISOString().slice(0, 10),
                 method: '轉帳',
                 note: raw.note || '',
                 createdAt,
@@ -306,7 +299,7 @@ export function validateProposal(
                 memberId: member.id,
                 memberName: member.name,
                 amount: raw.amount,
-                date: raw.date || new Date().toISOString().split('T')[0],
+                date: raw.date || new Date().toISOString().slice(0, 10),
                 desc: raw.note || '',
                 createdAt,
             };
@@ -321,13 +314,16 @@ export function validateProposal(
     const resolvedMember = resolveMember(db, { memberName }) ||
         db.members.find(m => m.name.toLowerCase().includes(memberName.toLowerCase()));
 
-    return {
+    const result: ValidationResult = {
         ok: blockReasons.length === 0,
         blockReasons,
         warnings: [...(raw.warnings || []), ...warnings],
-        resolvedMemberId: resolvedMember?.id,
-        resolvedMemberName: resolvedMember?.name,
     };
+    if (resolvedMember) {
+        result.resolvedMemberId = resolvedMember.id;
+        result.resolvedMemberName = resolvedMember.name;
+    }
+    return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -438,7 +434,7 @@ export function applyPaymentProposal(
             id: `pay_${crypto.randomUUID().slice(0, 8)}`,
             memberId: member.id,
             memberName: member.name,
-            date: (date as string) || now.split('T')[0],
+                date: typeof date === 'string' && date ? date : now.slice(0, 10),
             amount: amount as number,
             method: (method as string) || '轉帳',
             cycle: (cycle as string) || (db.currentMonth || '').replace('/', ''),
@@ -492,7 +488,7 @@ export function applyTempChargeProposal(
             id: `chg_${crypto.randomUUID().slice(0, 8)}`,
             memberId: member.id,
             memberName: member.name,
-            date: (date as string) || now.split('T')[0],
+            date: typeof date === 'string' && date ? date : now.slice(0, 10),
             amount: amount as number,
             desc: (desc as string) || '',
             createdAt: now,
@@ -657,7 +653,7 @@ export async function parseAndClassifyProposals(
             if (applyResult.ok) {
                 proposal.status = 'applied';
                 proposal.appliedAt = new Date().toISOString();
-                proposal.ledgerEventId = applyResult.ledgerEventId;
+                if (applyResult.ledgerEventId) proposal.ledgerEventId = applyResult.ledgerEventId;
                 result.applied.push(proposal);
             } else {
                 // Apply failed → push to rejected with reason

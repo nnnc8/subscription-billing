@@ -10,7 +10,7 @@ const {
     SESSION_COOKIE_NAME,
     createSessionCookieValue,
     verifySessionCookieValue
-} = require('../lib/auth.cjs');
+} = require('../lib/auth');
 
 const root = path.resolve(__dirname, '..');
 const sessionSecret = 'test-session-secret-with-enough-length-1234567890';
@@ -110,13 +110,14 @@ async function withServer(fakeGoogle, fn) {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'subscription-billing-auth-'));
     fs.copyFileSync(path.join(root, 'fixtures', 'demo-database.json'), path.join(dataDir, 'database.json'));
     const port = String(3300 + Math.floor(Math.random() * 500));
-    const child = spawn(process.execPath, ['server.cjs'], {
+    const child = spawn(process.execPath, [path.resolve(root, 'node_modules/tsx/dist/cli.mjs'), 'server.ts'], {
         cwd: root,
         env: {
             ...process.env,
             PORT: port,
             HOST: '127.0.0.1',
             DATA_DIR: dataDir,
+            MIGRATE_FROM_JSON: '1',
             APP_SESSION_SECRET: sessionSecret,
             GOOGLE_CLIENT_ID: 'fake-client-id',
             GOOGLE_CLIENT_SECRET: 'fake-client-secret',
@@ -138,7 +139,7 @@ async function withServer(fakeGoogle, fn) {
     const baseUrl = `http://127.0.0.1:${port}`;
     try {
         await waitForHealth(baseUrl, child);
-        await fn(baseUrl);
+        await fn(baseUrl, { dataDir });
     } finally {
         child.kill('SIGTERM');
         fs.rmSync(dataDir, { recursive: true, force: true });
@@ -169,10 +170,14 @@ async function main() {
 
     const fakeGoogle = await createFakeGoogleServer();
     try {
-        await withServer(fakeGoogle, async (baseUrl) => {
+        await withServer(fakeGoogle, async (baseUrl, { dataDir }) => {
             const unauthenticated = await fetch(`${baseUrl}/api/data`);
             assert.strictEqual(unauthenticated.status, 401);
             assert.deepStrictEqual(await unauthenticated.json(), { error: 'Unauthorized' });
+
+            const unauthenticatedExport = await fetch(`${baseUrl}/api/export-json`);
+            assert.strictEqual(unauthenticatedExport.status, 401);
+            assert.deepStrictEqual(await unauthenticatedExport.json(), { error: 'Unauthorized' });
 
             for (const [method, endpoint] of [
                 ['POST', '/api/payment'],
@@ -243,6 +248,130 @@ async function main() {
             assert(callbackCookies.some(item => item.includes('HttpOnly')));
             assert(callbackCookies.some(item => item.includes('SameSite=Lax')));
             assert(!callbackCookies.some(item => item.includes('Secure')), 'local test cookie should not force Secure');
+
+            const successfulWrite = await fetch(`${baseUrl}/api/payment`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Cookie: sessionCookie
+                },
+                body: JSON.stringify({
+                    memberId: 'm_alpha',
+                    date: '2026-06-11',
+                    amount: 321,
+                    method: 'test',
+                    cycle: '202606',
+                    note: 'critical-write-success'
+                })
+            });
+            assert.strictEqual(successfulWrite.status, 200);
+            const successfulPayload = await successfulWrite.json();
+            assert(successfulPayload.data.payments.some(payment => payment.note === 'critical-write-success'));
+
+            const backupDir = path.join(dataDir, 'backups');
+            fs.rmSync(backupDir, { recursive: true, force: true });
+            fs.writeFileSync(backupDir, 'force backup failure');
+
+            const failedWrite = await fetch(`${baseUrl}/api/payment`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Cookie: sessionCookie
+                },
+                body: JSON.stringify({
+                    memberId: 'm_alpha',
+                    date: '2026-06-12',
+                    amount: 654,
+                    method: 'test',
+                    cycle: '202606',
+                    note: 'must-not-persist'
+                })
+            });
+            assert.strictEqual(failedWrite.status, 500);
+            const failedWritePayload = await failedWrite.json();
+            assert.strictEqual(failedWritePayload.error, '資料寫入失敗，已停止本次操作');
+            assert(!JSON.stringify(failedWritePayload).includes(dataDir));
+
+            fs.rmSync(backupDir, { force: true });
+            fs.mkdirSync(backupDir);
+
+            const dataAfterFailedWrite = await fetch(`${baseUrl}/api/data`, {
+                headers: { Cookie: sessionCookie }
+            });
+            assert.strictEqual(dataAfterFailedWrite.status, 200);
+            const dataAfterFailedWritePayload = await dataAfterFailedWrite.json();
+            assert(dataAfterFailedWritePayload.payments.some(payment => payment.note === 'critical-write-success'));
+            assert(!dataAfterFailedWritePayload.payments.some(payment => payment.note === 'must-not-persist'));
+
+            const invalidBackupName = 'database_20260711_202500_000_deadbeef.db';
+            fs.writeFileSync(path.join(backupDir, invalidBackupName), 'not a sqlite database');
+            const liveDbPath = path.join(dataDir, 'database.db');
+            const liveDbBeforeInvalidRestore = fs.readFileSync(liveDbPath);
+
+            const invalidRestore = await fetch(`${baseUrl}/api/backups/restore`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Cookie: sessionCookie
+                },
+                body: JSON.stringify({ filename: invalidBackupName })
+            });
+            assert.strictEqual(invalidRestore.status, 400);
+            assert.deepStrictEqual(await invalidRestore.json(), { error: '備份檔案無效或已損毀' });
+            assert.deepStrictEqual(fs.readFileSync(liveDbPath), liveDbBeforeInvalidRestore);
+
+            const createBackup = await fetch(`${baseUrl}/api/backups/create`, {
+                method: 'POST',
+                headers: { Cookie: sessionCookie }
+            });
+            assert.strictEqual(createBackup.status, 200);
+            const { filename: validBackupName } = await createBackup.json();
+
+            const writeAfterBackup = await fetch(`${baseUrl}/api/payment`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Cookie: sessionCookie
+                },
+                body: JSON.stringify({
+                    memberId: 'm_alpha',
+                    date: '2026-06-13',
+                    amount: 987,
+                    method: 'test',
+                    cycle: '202606',
+                    note: 'remove-by-restore'
+                })
+            });
+            assert.strictEqual(writeAfterBackup.status, 200);
+
+            for (const entry of fs.readdirSync(backupDir)) {
+                if (entry !== validBackupName) {
+                    fs.rmSync(path.join(backupDir, entry), { recursive: true, force: true });
+                }
+            }
+            for (let i = 0; i < 49; i += 1) {
+                const dummyName = `database_20990101_000000_${String(i).padStart(3, '0')}_aaaaaaaa.db`;
+                fs.copyFileSync(path.join(backupDir, validBackupName), path.join(backupDir, dummyName));
+            }
+            assert.strictEqual(
+                fs.readdirSync(backupDir).filter(name => name.startsWith('database_') && name.endsWith('.db')).length,
+                50
+            );
+
+            const boundaryRestore = await fetch(`${baseUrl}/api/backups/restore`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Cookie: sessionCookie
+                },
+                body: JSON.stringify({ filename: validBackupName })
+            });
+            assert.strictEqual(boundaryRestore.status, 200);
+            const boundaryRestorePayload = await boundaryRestore.json();
+            assert(boundaryRestorePayload.data.payments.some(payment => payment.note === 'critical-write-success'));
+            assert(!boundaryRestorePayload.data.payments.some(payment => payment.note === 'remove-by-restore'));
+            assert(fs.existsSync(path.join(backupDir, validBackupName)));
+            assert(!fs.readdirSync(backupDir).some(name => name.startsWith('.restore-safety-')));
 
             const authedData = await fetch(`${baseUrl}/api/data`, {
                 headers: { Cookie: sessionCookie }

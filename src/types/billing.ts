@@ -44,6 +44,7 @@ export interface Payment {
   createdAt?: string
   recordedAt?: string
   status?: string
+  voided?: boolean
   voidedAt?: string
   voidedBy?: string
   voidReason?: string
@@ -61,6 +62,7 @@ export interface TempCharge {
   createdAt?: string
   recordedAt?: string
   status?: string
+  voided?: boolean
   voidedAt?: string
   voidedBy?: string
   voidReason?: string
@@ -148,6 +150,7 @@ export interface Database {
   reminderStyle: string
   ledger: Ledger
   lifecycle?: LifecycleMetadata
+  _audit?: DatabaseAudit
   [key: string]: unknown
 }
 
@@ -158,8 +161,39 @@ export interface AuditWarning {
   title: string
   detail: string
   code: string
+  impact?: string
   memberId?: string
   platformId?: string
+}
+
+export interface HistoryIntegritySnapshot {
+  ok: boolean
+  count: number
+  sealedCount: number
+  latestMonth: string | null
+  latestHash: string | null
+  problems: Array<{
+    severity: string
+    code: string
+    month: string | null
+    detail: string
+  }>
+}
+
+export interface AuditLedgerSummary {
+  ok: boolean
+  count: number
+  lastHash: string | null
+  problems: string[]
+  latest: LedgerEvent | null
+  recent: LedgerEvent[]
+}
+
+export interface DatabaseAudit {
+  generatedAt: string
+  warnings: AuditWarning[]
+  ledger: AuditLedgerSummary
+  snapshot: SystemSnapshot
 }
 
 export interface ClosePreview {
@@ -232,13 +266,13 @@ export interface SystemSnapshot {
   history: {
     count: number
     latestMonth: string | null
-    integrity: any
+    integrity: HistoryIntegritySnapshot | null
   }
   ledger: {
     ok: boolean
     count: number
     lastHash: string | null
-    latest: any
+    latest: LedgerEvent | null
   }
 }
 
@@ -261,6 +295,24 @@ export interface BackupInfo {
   hash: string
 }
 
+export interface BackupRestoreImpact {
+  sameBusinessState: boolean
+  changeCount: number
+  summary: string
+  changes: string[]
+}
+
+export interface BackupInventoryItem {
+  filename: string
+  label: string
+  size: number
+  mtime: string
+  readable: boolean
+  snapshot?: SystemSnapshot
+  error?: string
+  restoreImpact: BackupRestoreImpact
+}
+
 export interface BackupPreview {
   filename: string
   original: {
@@ -281,7 +333,8 @@ export interface BackupPreview {
 }
 
 export interface AIMessage {
-  role: 'user' | 'assistant' | 'system'
+  id?: string
+  role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
   tool_calls?: AIToolCall[]
 }
@@ -349,6 +402,10 @@ export interface SessionVerificationResult {
 }
 
 export type ReminderStyle = 'friendly' | 'professional' | 'pirate' | 'poetic' | 'urgent' | 'minimal'
+
+export type ApiFetch = (path: string, options?: RequestInit) => Promise<Response>
+export type RefreshData = () => Promise<void>
+export type ShowToast = (message: string) => void
 
 // ---------------------------------------------------------------------------
 // Automation Inbox (GenAI Demo)

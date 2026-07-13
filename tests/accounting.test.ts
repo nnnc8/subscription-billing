@@ -10,7 +10,7 @@ import {
   getSystemSnapshot,
   normalizeDatabaseRelations
 } from '../lib/accounting.js';
-import type { Database, Payment, TempCharge } from '../src/types/billing.js';
+import type { AuditWarning, Database, Payment, TempCharge } from '../src/types/billing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = path.join(__dirname, '../fixtures/demo-database.json');
@@ -187,6 +187,6 @@ describe('Accounting & Ledger business logic validations', () => {
 });
 
 // Helper for type checking warnings
-function warningSeverity(w: any): string {
+function warningSeverity(w: AuditWarning): string {
   return w.severity || '';
 }

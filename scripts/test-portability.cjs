@@ -1,4 +1,6 @@
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 
 const {
     buildLaunchPath,
@@ -16,10 +18,24 @@ const plist = createLaunchAgentPlist({
     envPath: '/usr/local/bin:/usr/bin:/bin'
 });
 
-assert(plist.includes('/Users/example/subscription-billing/server.cjs'));
+assert(plist.includes('/Users/example/subscription-billing/server.ts'));
+assert(plist.includes('/Users/example/subscription-billing/node_modules/tsx/dist/cli.mjs'));
+assert(!plist.includes('server.cjs'));
 assert(plist.includes('/usr/local/bin/node'));
 assert(plist.includes('<key>WorkingDirectory</key>'));
+assert(plist.includes('<key>DATA_DIR</key>'));
 assert(!plist.includes('/Users/local-only-accounting-host'));
+
+const projectRoot = path.resolve(__dirname, '..');
+const startScript = fs.readFileSync(path.join(projectRoot, 'start.sh'), 'utf8');
+const staticPlist = fs.readFileSync(path.join(projectRoot, 'com.nc8.subscription-billing.plist'), 'utf8');
+const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
+assert(startScript.includes('pnpm run start'));
+assert(staticPlist.includes('node_modules/tsx/dist/cli.mjs'));
+assert(staticPlist.includes('__PROJECT_DIR__/server.ts'));
+assert(!startScript.includes('server.cjs'));
+assert(!staticPlist.includes('server.cjs'));
+assert.strictEqual(packageJson.scripts.start, 'tsx server.ts');
 
 const escaped = escapeXml('/tmp/a&b/"quote"');
 assert.strictEqual(escaped, '/tmp/a&amp;b/&quot;quote&quot;');

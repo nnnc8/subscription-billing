@@ -6,10 +6,12 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
     "noEmit": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
-    "allowJs": true,
+    "allowJs": false,
     "verbatimModuleSyntax": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true
