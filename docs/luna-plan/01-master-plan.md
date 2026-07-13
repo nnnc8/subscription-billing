@@ -386,6 +386,18 @@ runtime_scope: read-only plist/launchctl/ps/lsof inspection only; no service res
 next: obtain explicit operator authorization before any installed-runtime action; do not restart known server.cjs crash-loop
 ```
 
+### 07 CI smoke wiring correction — 2026-07-13
+
+```text
+batch: 07 correction
+status: in_progress
+finding: the first CI Docker job satisfied needs: verify and image build, but violated Batch 06's explicit rule that the Docker job cannot be only docker build; authenticated Docker smoke was therefore still absent
+write_set: .github/workflows/verify.yml (already within Batch 06 CI write set), docs/luna-plan/01-master-plan.md evidence only
+change: after the image build, invoke executable scripts/docker-smoke.sh; the script uses dummy signed auth, dynamic port, named ephemeral volume, native fetch, /data isolation and recreate checks, then traps cleanup
+rollback: /tmp/luna-rollback/07-ci-smoke-20260713-230529/ with pre-edit hash recorded
+next: commit/push and require the GitHub Docker job to pass the authenticated smoke before marking 07 verified_complete
+```
+
 ### 06 CI retry scope revision — 2026-07-13
 
 ```text
