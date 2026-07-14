@@ -77,7 +77,7 @@ docs/luna-plan/prompts/01a-durable-save-and-mutation-queue.md
 
 Batch 08 operator closure is verified complete under explicit user authorization. The installed plist is backed up at `/Users/nc8/.codex/agent-guide-backups/subscription-billing-launchagent-20260714-002854/`, the installed service runs `node + tsx + server.ts` with `active=1`, `/api/health` is ready, and the post-cutover error delta is zero. Credential review was redacted and review-only; no rotation or re-scope occurred. Temp authenticated browser smoke covered four navigation surfaces, state retention, three dialogs, real Esc, focus return and toast. Paid Gemini remains mock-only; the 99 completion audit is verified complete.
 
-The user explicitly authorized the historical reconstruction exception in `01-master-plan.md`; fresh reviewer 019f5fb7-6305-70f1-a4a2-85d4715cce6d confirmed PASS with P0=0/P1=0/P2=0. Final docs commit `00ec047fbc9278b9537489968d859fd63ead95fe` is pushed to `origin/main`; CI run 29318203377 passed Node 22, Node 24 and Docker smoke. The installed LaunchAgent remains active and ready; the repository has no external hosting workflow beyond Docker/LaunchAgent.
+The user explicitly authorized the historical reconstruction exception in `01-master-plan.md`; fresh reviewer 019f5fb7-6305-70f1-a4a2-85d4715cce6d confirmed PASS with P0=0/P1=0/P2=0. Deployment verification commit `00ec047fbc9278b9537489968d859fd63ead95fe` is pushed to `origin/main`; CI run 29318203377 passed Node 22, Node 24 and Docker smoke. Subsequent documentation alignment commits are docs-only. The installed LaunchAgent remains active and ready; the repository has no external hosting workflow beyond Docker/LaunchAgent.
 
 ## 最小升級包
 

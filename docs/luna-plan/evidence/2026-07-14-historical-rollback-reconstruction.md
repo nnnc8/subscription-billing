@@ -46,4 +46,4 @@ The subsequent read-only recovery search found no reflog/dangling object contain
 
 The user explicitly granted maximum authority to handle this blocker and continue through commit/push/deployment verification. The canonical plan now accepts this reconstruction only under its six-condition exception and only after a fresh reviewer records P0=0 and P1=0. Fresh reviewer `019f5fb7-6305-70f1-a4a2-85d4715cce6d` recorded PASS with P0=0/P1=0/P2=0. The files remain labeled as reconstructed; no claim of original execution-time capture is made.
 
-Completion commit `00ec047fbc9278b9537489968d859fd63ead95fe` was pushed to `origin/main`; CI run `29318203377` passed Node 22, Node 24 and Docker smoke. The local LaunchAgent/runtime read-back also remained healthy after the push.
+Deployment verification commit `00ec047fbc9278b9537489968d859fd63ead95fe` was pushed to `origin/main`; CI run `29318203377` passed Node 22, Node 24 and Docker smoke. Subsequent documentation alignment commits are docs-only. The local LaunchAgent/runtime read-back also remained healthy after the push.
