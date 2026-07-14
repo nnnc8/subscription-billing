@@ -21,6 +21,8 @@ Make existing SQLite migration, backup, restore and delete safe under every test
 - tests/db-lifecycle.test.ts
 - tests/server.integration.test.ts
 - tests/db-atomicity.test.ts (new if needed)
+- server.ts (startup await/readiness boundary; existing boundary read-back or exact edit only if required by this batch)
+- tests/mutation-queue.test.ts (legacy adapter removal/read-back; exact edit only if required by this batch)
 - docs/luna-plan/01-master-plan.md (status/evidence only)
 
 Do not modify frontend, AI, package/lock, Docker, CI, installed plist or real DB.
@@ -50,7 +52,7 @@ Test at least: migration failure, stage validation failure, stage→live failure
 
 Attempt limit: initial run, retry 1 and retry 2 only; each retry requires a new falsifiable hypothesis. After retry 2, restore product/prompt preimages, keep the master ledger status/evidence append-only, verify hashes and stop.
 
-If any branch deletes a safety/stage/tombstone artifact before proof, stop and restore only product/prompt preimages. Never “fix” failure atomicity with a live rm + rename. Snapshot and hash all existing product/prompt write-set paths before attempt 1, including untracked test files; keep the master ledger status/evidence append-only; after retry 2 restore product/prompt preimages. If rollback cannot be proven, keep the safety file and report the system as blocked for operator review.
+If any branch deletes a safety/stage/tombstone artifact before proof, stop and restore only product/prompt preimages. Never “fix” failure atomicity with a live rm + rename. Snapshot and hash all existing product/prompt write-set paths before attempt 1, including untracked test files; keep the master ledger status/evidence append-only; after retry 2 restore product/prompt preimages. If rollback cannot be proven, record a blocked condition for operator review; reserve batch status `blocked` for the canonical three-consecutive-goal-turn threshold.
 
 ## Evidence and next
 

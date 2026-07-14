@@ -32,7 +32,7 @@ Do not modify package.json, lockfile, UI, Docker, CI, plist or unrelated tests.
 4. In one SQLite transaction and before commit, read back through the same connection and compare the canonical projection: settings, lifecycle, platforms, members, subscriptions, payments, tempCharges, history and ledger.
 5. Any projection mismatch, integrity failure, domain failure or persistence failure rolls back.
 6. A rejected queue item must not poison the next item.
-7. During transition, keep a readDB legacy adapter with a WeakMap base fingerprint. If the caller snapshot differs from the current fresh fingerprint, fail closed without backup, write, merge or automatic retry.
+7. During transition, keep the `readDB` read-side legacy adapter with a WeakMap base fingerprint. This is not the write-side `writeDB` recovery adapter; if the caller snapshot differs from the current fresh fingerprint, fail closed without backup, write, merge or automatic retry. `writeDB` remains recovery-only until the 01B/02 cutover proves it can be removed.
 8. Move only payment and temp-charge routes first. Network/AI awaits are not part of this queue.
 
 ## Invariants

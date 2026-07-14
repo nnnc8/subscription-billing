@@ -45,7 +45,7 @@ Do not run system-wide process listings or emit raw ProgramArguments. The jq pro
 
 ## Failure, retry and rollback
 
-Attempt limit: initial run, retry 1 and retry 2 only; each retry requires a new falsifiable hypothesis. After retry 2, restore product/prompt preimages, keep the master ledger status/evidence append-only, verify hashes and stop.
+Attempt limit: initial run, retry 1 and retry 2 only; each retry requires a new falsifiable hypothesis. Installed plist/service state is operator state, not a product preimage: after retry 2 retain the authorized plist backup, leave a failed new service stopped, and restore the installed plist only after explicit operator approval. Verify launchctl state, port/health and log delta after any operator-approved restore; keep the master ledger status/evidence append-only.
 
 Any unknown credential owner, unexpected service dependency, incorrect DATA_DIR, health failure, browser regression or new error stops the run. Keep the backup and restore the installed plist only with explicit operator approval. Do not claim rollback success until launchctl and logs prove it.
 

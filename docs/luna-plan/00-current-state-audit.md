@@ -1,6 +1,6 @@
 # Luna 現況稽核
 
-更新日：2026-07-13  
+更新日：2026-07-14
 稽核基準：`main` / `6028913dd95e` / working tree  
 Codebase MCP project：`Users-nc8-subscription-billing`  
 Scope：本套件只規劃未來執行；本次交付不得改產品、依賴、服務、正式資料、git index、backup 或 secrets。
@@ -15,7 +15,7 @@ Scope：本套件只規劃未來執行；本次交付不得改產品、依賴、
 
 | 項目 | 現況 | 證據 |
 |---|---|---|
-| indexed repo | ready；final live read 1220 nodes、2647 edges；counts are dated observations, status is authoritative | `mcp__codebase_memory_mcp__list_projects`、`index_status`，2026-07-13；earlier pre-write read was 1033/2473 |
+| indexed repo | 2026-07-13 baseline observed ready with 1220 nodes / 2647 edges; the main runner's current 2026-07-14 direct `list_projects` probe returned `Transport closed`, so no current subscription-billing project listing is available and no index was initialized in this execution | baseline `mcp__codebase_memory_mcp__list_projects`/`index_status`, 2026-07-13; current direct capability probe, 2026-07-14 |
 | evidence capture | redacted read-only baseline saved | `docs/luna-plan/evidence/2026-07-13-baseline.md` |
 | branch / HEAD | dirty `main`、`6028913dd95e` | `git branch --show-current`、`git rev-parse --short=12 HEAD` |
 | pre-delivery Luna directory | 建立前不存在；本次已建立；無需備份既有規劃檔 | `test -d docs/luna-plan` before write；本檔完成後 `find docs/luna-plan` |
@@ -74,12 +74,18 @@ Scope：本套件只規劃未來執行；本次交付不得改產品、依賴、
 - 不 switch branch、stage、commit、reset、checkout、clean；不得覆蓋本輪開始前 dirty changes。
 - 本次交付 write set 僅 `docs/luna-plan/**`。若要執行 prompt 內產品變更，必須是另一次明確授權。
 
-## 外部狀態：尚未算完成
+## 外部狀態：2026-07-13 baseline 尚未算完成
 
 - `gpt-5.6-luna` 的當回合 quota/model read-back 未在本 session 重試；collaboration surface 若沒有 selector，不可用 prompt label 假裝切模。
 - installed LaunchAgent 尚未取得 rotation/cutover 授權。
 - paid Gemini key、成本與可撤銷測試 authorization 未取得；目前只算 mock-only。
 - Docker host/GitHub job、authenticated browser smoke、production DB 與 production backup 未驗。
+
+## Current execution delta — 2026-07-14
+
+Batch 08 的 operator authorization 已取得並完成。Installed LaunchAgent 已由已刪除的 `server.cjs` cut over 到 `node + tsx + server.ts`；redacted credential review 沒有發現 installed plist 內嵌敏感 key，且未做 credential rotation/re-scope。LaunchAgent active count 為 1，`/api/health` readiness 為 ready，`/api/data` 未登入回 401，DATA_DIR 為 project root，listener 是 LaunchAgent tsx child process，cutover 後 5 秒無新增 error 或 `MODULE_NOT_FOUND`。
+
+Temp DATA_DIR 的 authenticated browser smoke 已通過四導航、state retention、Automation mock filter、payment/temp-charge/restore 三個 dialogs、真 Esc、opener focus return 與 toast。Paid Gemini 沒有執行，仍是 mock-only；temp server、dummy session、temp data、browser session 已清理。Batch 08 現在為 `verified_complete`；99 在使用者明確授權 historical reconstruction exception 後由 fresh reviewer PASS，P0/P1/P2 均為零。
 
 ## 舊計畫 traceability
 

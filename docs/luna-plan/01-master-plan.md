@@ -31,7 +31,20 @@
 - `in_progress`：目前唯一允許工作的 batch。
 - `blocked`：同一外部 blocker 已連續三次 goal turn 且沒有安全替代路徑。
 - `operator_only`：需要使用者明確授權，不能 unattended。
-- `verified_complete`：要求的證據已在當前 SHA / runtime / temp data scope 取得。
+- `verified_complete`：要求的證據已在當前 SHA / runtime / temp data scope 取得；rollback preimage 可是 execution-time original capture，或符合下方「authorized historical reconstruction」例外。
+
+### Authorized historical reconstruction exception — 2026-07-14
+
+使用者已明確授權本次處理原始 preimage 缺口。由於 execution-time original capture 已不可恢復，以下條件全部成立時，historical reconstruction 可作為本計畫的 rollback evidence：
+
+1. post-edit snapshot 與完整 patch ledger 均存在；
+2. exact patches 以可重放順序 reverse-apply，產生 materialized rollback artifact；
+3. 所有檔案都有 SHA-256，且至少一個與獨立 forward replay 或等價 anchor 做 exact cross-check；
+4. 證據明確標註為 reconstruction，不冒充 original capture；
+5. fresh read-only reviewer 在本次 plan revision 後確認 P0/P1 為零；
+6. 不因此放寬產品、資料、credential、service 或 rollback safety gate。
+
+這是針對本次歷史遺漏的明確例外，不適用於未來 batch；未來仍必須在第一次 edit 前捕獲 original preimage。
 
 ## Batch map
 
@@ -45,8 +58,8 @@
 | 05 | strict compiler、lint zero | tsconfig.app/node/test、eslint、fixed warning paths plus pre-inventory exact strict-error paths、engine | 04 | verified_complete |
 | 06 | measured coverage、verify、bundle、CI | package/scripts/Vite/Vitest/CI | 05 | verified_complete |
 | 07 | Docker live smoke、README alignment | Docker files、README、smoke script | 06 | verified_complete |
-| 08 | installed runtime/browser closure | operator-only installed plist/runtime; no unattended write | 07 | operator_only |
-| 99 | completion audit and fresh review | docs status/evidence only unless a future user-authorized fix follows | 01A–08 | pending |
+| 08 | installed runtime/browser closure | operator-only installed plist/runtime; no unattended write | 07 | verified_complete |
+| 99 | completion audit and fresh review | docs status/evidence only; authorized reconstruction disposition is documented below | 01A–08 | verified_complete |
 
 ## A→G documentation crosswalk
 
@@ -163,8 +176,8 @@ There is one canonical ledger: the Evidence section of this file, updated per de
 | 05 | verified_complete | `6028913dd95e` + dirty main; 2026-07-13 22:37 gate | hardened app/node/test typechecks, lint zero, full tests, verify and build passed on Node 24.15.0 | [06](prompts/06-quality-gates-and-ci.md) |
 | 06 | verified_complete | `a42ef98` + main; 2026-07-13 22:57 CI gate | coverage thresholds locked to measured floor; local/full CI verify and Docker build passed; CI Docker job needs verify | [07](prompts/07-docker-runtime-and-readme.md) |
 | 07 | verified_complete | `e8be9a2afa7a` + CI run [29261255991](https://github.com/nnnc8/subscription-billing/actions/runs/29261255991); ledger-only run [29261496919](https://github.com/nnnc8/subscription-billing/actions/runs/29261496919) also green | Dockerfile/.dockerignore/README/smoke updated; Node 22/24 verify and authenticated Docker volume smoke passed, including non-root UID, readiness, /data-only storage and recreation persistence | [08](prompts/08-operator-runtime-closure.md) operator gate |
-| 08 | operator_only | — | explicit operator authorization missing | [08](prompts/08-operator-runtime-closure.md) |
-| 99 | pending | — | blocked by earlier batches/review | [99](prompts/99-completion-audit.md) |
+| 08 | verified_complete | `10573c39970db0859f19d287ebfd970c447d6969` + [operator evidence](evidence/2026-07-14-batch08-operator.md) | plist backup/cutover, redacted credential review, active LaunchAgent, ready health, 401 boundary, zero post-cutover error delta, temp authenticated browser smoke and mock-only AI proof | [99](prompts/99-completion-audit.md) |
+| 99 | verified_complete | `10573c39970db0859f19d287ebfd970c447d6969` + current docs revision | user-authorized historical reconstruction exception; fresh review PASS P0=0/P1=0/P2=0; verify/read-back passed | [99](prompts/99-completion-audit.md) |
 
 ### 01A evidence — 2026-07-13
 
@@ -205,7 +218,7 @@ commands:
 result: targeted 2 files / 14 tests passed; full 12 files / 101 tests passed; verify, build, both typechecks and diff check passed; lint exited 0 with 6 warnings, with strict warning cleanup reserved for Batch 05
 runtime_scope: temp DATA_DIR, dynamic localhost ports, dummy OAuth credentials
 proof: settings/subscriptions/bank/config, automation confirmation and settlement use fresh queue; export is authenticated JSON attachment and dbPath mtime remains unchanged; startup/readiness failure blocks initialization; health returns 503 when readiness is blocked; ordinary routes retain 38 method/path pairs and no longer call runtime.writeDB except backup recovery
-rollback: /tmp/luna-rollback/01b-late-20260713-215400/ (post-edit recovery snapshot with hashes); pre-edit 01B preimage was not captured before implementation and is recorded as a runbook deviation, not represented as a preimage
+rollback: original pre-edit capture was missed; user-authorized evidence-preserving reverse replay from `/tmp/luna-rollback/01b-late-20260713-215400/` produced `/tmp/luna-rollback/01b-reconstructed-20260714-154920/` with cross-checked hashes; see [historical reconstruction](evidence/2026-07-14-historical-rollback-reconstruction.md); accepted only under the authorized exception after fresh 99 review
 next: 02 — backup, restore, migration and delete failure-atomicity
 ```
 
@@ -215,7 +228,7 @@ next: 02 — backup, restore, migration and delete failure-atomicity
 batch: 02
 status: verified_complete
 sha: 6028913dd95e + dirty baseline; no stage/commit/branch change
-write_set: lib/db.ts, server/runtime.ts, server/services/backup.ts, server/routes/backup.ts, server.ts (required startup await; omitted by prompt write set), tests/db-lifecycle.test.ts, tests/server.integration.test.ts, tests/db-atomicity.test.ts (new), tests/mutation-queue.test.ts (legacy adapter removal), docs/luna-plan/01-master-plan.md
+write_set: lib/db.ts, server/runtime.ts, server/services/backup.ts, server/routes/backup.ts, server.ts (required startup await/readiness boundary), tests/db-lifecycle.test.ts, tests/server.integration.test.ts, tests/db-atomicity.test.ts (new), tests/mutation-queue.test.ts (legacy adapter removal), docs/luna-plan/01-master-plan.md
 commands:
   - pnpm test --run tests/db-lifecycle.test.ts tests/db-atomicity.test.ts tests/server.integration.test.ts
   - pnpm run verify
@@ -228,7 +241,7 @@ commands:
 result: targeted backup/integration 19 tests passed; full 13 files / 106 tests passed; verify, build, both typechecks and diff check passed; lint exited 0 with 6 warnings reserved for Batch 05
 runtime_scope: temp DATA_DIR, isolated temp migration directories, dynamic localhost ports, dummy OAuth credentials, injected online-backup failures
 proof: existing DB migration copies live to hidden stage, runs injected migration directory, validates integrity/load/domain, creates hidden non-rotating safety, commits stage to live with Online Backup, verifies fingerprint, and rolls back on commit/post-verify failure; rollback failure retains safety; restore appends ledger on stage before commit; regular rotation ignores stage/safety/tombstones; delete renames to same-directory tombstone, restores on ledger failure, reports cleanupPending on unlink failure, and startup clears matching tombstone; no normal route calls runtime.writeDB
-rollback: pre-edit existing-file capture at /tmp/luna-rollback/02-20260713-220100/; final recovery snapshot at /tmp/luna-rollback/02-late-20260713-220520/ with hashes; server.ts was omitted from the prompt preimage set and tests/db-atomicity.test.ts was new, so the late snapshot is not represented as an earlier preimage
+rollback: existing-file pre-edit capture at /tmp/luna-rollback/02-20260713-220100/; `server.ts` was omitted; user-authorized exact reverse replay of session call 227 from `/tmp/luna-rollback/02-late-20260713-220520/` produced `/tmp/luna-rollback/02-reconstructed-20260714-154920/server.ts`; see [historical reconstruction](evidence/2026-07-14-historical-rollback-reconstruction.md); accepted only under the authorized exception after fresh 99 review
 next: 03 — trust proxy, origin/CORS, domain validation and AI boundary
 ```
 
@@ -238,7 +251,7 @@ next: 03 — trust proxy, origin/CORS, domain validation and AI boundary
 batch: 03
 status: verified_complete
 sha: 6028913dd95e + dirty baseline; no stage/commit/branch change
-write_set: server/app.ts, server/runtime.ts, server/middleware/cors.ts, server/middleware/auth.ts, server/routes/auth-runtime.ts (existing boundary read-back), lib/accounting.ts, lib/google-oauth.ts, lib/ai.ts, lib/automation.ts, lib/ai-assistant.ts, tests/ai-transport.test.ts, tests/security-boundaries.test.ts (new), tests/domain-validation.test.ts (new), docs/luna-plan/01-master-plan.md
+write_set: server/app.ts, server/runtime.ts, server/middleware/cors.ts, server/middleware/validation.ts, server/middleware/auth.ts (existing boundary read-back), server/routes/auth-runtime.ts (existing boundary read-back), lib/accounting.ts, lib/google-oauth.ts, lib/ai.ts, lib/automation.ts (existing AI boundary read-back), lib/ai-assistant.ts (existing AI boundary read-back), tests/ai-transport.test.ts, tests/security-boundaries.test.ts (new), tests/domain-validation.test.ts (new), docs/luna-plan/01-master-plan.md
 commands:
   - pnpm test --run tests/domain-validation.test.ts tests/security-boundaries.test.ts tests/ai-transport.test.ts tests/server.integration.test.ts
   - pnpm test --run
@@ -399,6 +412,98 @@ write_set: master ledger evidence only; no product, plist, credential, service, 
 next: explicit operator authorization is still required; after authorization, use only the exact redacted commands in prompts/08-operator-runtime-closure.md and separately assess whether credential rotation is needed
 ```
 
+### 08 evidence — 2026-07-14 operator closure
+
+```text
+batch: 08
+status: verified_complete
+authority: explicit user authorization in the current task for plist backup, credential review, service cutover and temp DATA_DIR browser smoke; paid Gemini explicitly remains mock-only; credential rotation/re-scope was not authorized or performed
+write_set: installed plist backup and installed ~/Library/LaunchAgents/com.nc8.subscription-billing.plist; master-plan evidence ledger append only; no repo product/dependency/database/secret writes
+backup: /Users/nc8/.codex/agent-guide-backups/subscription-billing-launchagent-20260714-002854/com.nc8.subscription-billing.plist; sha256 900fab9ea55730e43bcfe951f4d453663e10a0941be9f5620a68bd076dfe16fd
+credential_review: installed plist has only redacted PATH/DATA_DIR/PORT values and no embedded sensitive key names; inherited GUI launchd credential-like names were reviewed by key name only, owner scope is the nc8 GUI launchd environment, no other LaunchAgent matching sensitive key names was found, no raw value was persisted or repeated, and no rotation/re-scope was performed
+cutover: node scripts/install-launchagent.cjs; installed args project to node + tsx-cli + server.ts; launchctl active count 1, state running, parent PID 99560, last exit never; DATA_DIR /Users/nc8/subscription-billing; listener PID 99586 is the tsx server child with parent PID 99560, so it is owned by the LaunchAgent process tree and is not orphaned; old server.cjs was not restarted
+runtime: /api/health returned {ok:true,authConfigured:true,dataWritable:true,host:127.0.0.1,port:3000,readiness:ready}; unauthenticated /api/data returned 401; 5-second post-cutover log delta was server.err 0, server.log 0 and MODULE_NOT_FOUND 0; the pre-existing accumulated server.cjs MODULE_NOT_FOUND count did not increase
+browser: local agent-browser session with dummy signed session and temporary Chrome; temp DATA_DIR /tmp/subscription-billing-b08.cG1cKE, app port 43127, one-shot local cookie bootstrap port 43128; four navigation surfaces passed; Dashboard filter B08-DASH-FILTER, Settings draft B08-SETTING-DRAFT, History month 2026/06, Automation input B08-AUTOMATION-INPUT and mock proposal pending filter remained after navigation; payment, temp-charge and restore dialogs opened, real Escape closed each, opener focus returned, and role=status toast appeared; temp app, cookie bootstrap, ports, logs and browser sessions were cleaned up
+ai_scope: no paid Gemini request; Automation proposal was a browser-only mock response
+capability: codebase-memory-mcp/list_projects failed with Transport closed before discovery; no index was initialized; narrow rg/direct reads and runtime tools were used as documented fallback
+rollback: not exercised because no new service failure occurred; if rollback becomes necessary, retain the authorized plist backup, leave the failed new service stopped, and restore the installed plist only after explicit operator approval, then re-verify launchctl state, listener/port, /api/health and log delta
+next: 99 completion audit; current fresh reviewer is required and its result must be recorded before 99 can be complete
+```
+
+### 99 audit attempt 1 — 2026-07-14
+
+```text
+status: pending
+reviewer: fresh read-only agent 019f5c63-368d-7ad1-8c0f-66df9671e437; report received before the documentation corrections below
+result: P0 0, P1 4, P2 4; Batch 08 runtime itself passed, but historical 01A/01B/02/03 scope/preimage reconciliation and several documentation contradictions prevented 99 completion
+corrections_started: clarified 01A readDB/writeDB adapter semantics; reconciled 02 and 03 prompt/evidence write-set paths; made 08 rollback operator-specific; added durable redacted Batch 08 evidence; corrected current MCP availability wording; added full SHA and evidence link
+remaining: 01B pre-edit preimage was never captured; 02 server.ts preimage was never captured; these are historical evidence gaps and cannot be reconstructed as original preimages without inventing proof
+next: rerun the fresh reviewer against the corrected current files; keep 99 pending if either historical preimage gap remains P1
+```
+
+### 99 audit attempt 2 — 2026-07-14
+
+```text
+status: pending
+reviewer: fresh read-only agent 019f5c6e-f22e-7383-b546-b404283e39d4; corrected-file review completed
+result: P0 0, P1 2, P2 3; corrected prompt scope, operator rollback wording, Batch 08 durable evidence, canonical retry status and current MCP wording; remaining P1 are the 01B original preimage gap and 02 server.ts original preimage gap
+disposition: P2 corrections are applied below/above; P1 gaps are retained as incomplete evidence, not accepted as verified proof
+next: one final reviewer pass after these P2 corrections; 99 remains pending unless P1 count reaches zero without inventing preimages
+```
+
+### 99 audit attempt 3 — 2026-07-14
+
+```text
+status: pending
+reviewer: fresh read-only agent 019f5c78-0574-7ed1-a787-f4fd650784cf; final current-file review
+result: P0 0, P1 2, P2 0; all 20 internal links resolve, status vocabulary is canonical, ready_for_ci is explicitly a non-canonical phase note, Batch 08 has durable evidence and rollback-not-exercised disposition, and MCP fallback wording is dated and consistent
+remaining_p1: 01B original pre-edit preimage was never captured; 02 server.ts original pre-edit preimage was never captured; later recovery snapshots are explicitly not original preimages
+next: keep 99 pending; only an evidence-preserving, user-authorized historical reconstruction or a separately agreed plan revision can address these P1 gaps; do not commit/push/deploy as if the full plan were complete
+```
+
+### 99 audit attempt 4 — 2026-07-14
+
+```text
+status: pending
+reviewer: fresh read-only agent 019f5f9b-eede-7e61-b39e-04630ebb6a22; current-file review after reconstruction evidence
+result: FAIL; P0 0, P1 2, P2 0
+findings: 01B and 02 server.ts remain P1 because reconstructed content proves replay consistency, not an execution-time original pre-edit capture
+new_evidence: [2026-07-14 historical rollback reconstruction](evidence/2026-07-14-historical-rollback-reconstruction.md); 01B was reverse-replayed from its post-edit snapshot using every recorded 01B product patch, and 02 server.ts was reverse-replayed from its post-edit snapshot using call 227
+cross_check: 01B runtime.ts, routes/shared.ts and tests/mutation-queue.test.ts match independent 01A forward replay exactly; 02 server.ts returns from await runtime.initializeAtomic() to runtime.initialize()
+disposition: do not promote reconstructed files to original captures; the reviewer says original execution-time pre-edit capture remains mandatory under the current plan
+next: explicit user decision is required: retain the hard P1 gate, or authorize a plan revision that accepts evidence-preserving historical reconstruction; do not commit/push/deploy as if 99 were complete
+```
+
+### 99 plan-revision authorization — 2026-07-14
+
+```text
+status: in_progress
+authority: user explicitly granted maximum authority to handle the blocker and continue through commit/push/deployment verification
+revision: apply the Authorized historical reconstruction exception above; preserve the distinction between reconstruction and original capture
+scope: docs/evidence policy only; no product, dependency, database, secret or installed-service relaxation
+next: fresh reviewer against the revised current files; P0/P1 must be zero before verified_complete
+```
+
+### 99 audit attempt 6 — 2026-07-14
+
+```text
+status: verified_complete
+reviewer: fresh read-only agent 019f5fb7-6305-70f1-a4a2-85d4715cce6d; post-revision review
+result: PASS; P0 0, P1 0, P2 0
+finding: none; six-condition exception, reconstruction labeling, evidence, statuses, links and write sets are consistent
+checks: local pnpm verify passed (16 files / 117 tests); markdown link audit passed (20 files / no broken links); git diff --check passed; no product files changed
+next: commit and push the completed docs package, then verify CI and live runtime
+```
+
+### 99 audit attempt 5 — 2026-07-14
+
+```text
+status: in_progress
+authority: user maximum-authority instruction received after attempt 4; plan revision is now authorized
+scope: accept the documented historical reconstruction exception only; preserve original-capture labeling and all safety gates
+next: fresh read-only reviewer must audit the revised rule and reconstruction evidence; then run final verify/read-back
+```
+
 ### 07 CI smoke wiring correction — 2026-07-13
 
 ```text
@@ -452,7 +557,8 @@ next: apply the smallest test-only change, run targeted test and full pnpm verif
 
 ```text
 batch: 06 retry 2
-status: ready_for_ci
+status: in_progress
+phase: ready_for_ci (historical pre-CI handoff note; not a canonical batch status)
 hypothesis: the DOM behavior is valid but the full Dashboard user-event test exceeds the default 5000ms only on GitHub runners; a test-local 15000ms timeout removes environment-dependent false failure without changing global timeout or coverage behavior
 result: targeted frontend DOM 4 tests passed; full coverage restored to statements 63.33%, branches 52.04%, functions 64.34%, lines 65.72%; full pnpm verify passed; no coverage threshold or exclude changed
 write_set: tests/frontend-dom.test.ts plus prompt/ledger scope revision; no product/runtime/data/credential change

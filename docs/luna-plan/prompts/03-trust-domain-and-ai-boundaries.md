@@ -18,9 +18,12 @@ Close the trust boundary at HTTP/OAuth/CORS/AI edges while keeping business inva
 - lib/accounting.ts
 - server/middleware/cors.ts
 - server/middleware/validation.ts
+- server/middleware/auth.ts (existing boundary read-back; exact edit only if required by this batch)
 - server/routes/auth-runtime.ts
 - lib/google-oauth.ts
 - lib/ai.ts
+- lib/automation.ts (existing AI boundary read-back; exact edit only if required by this batch)
+- lib/ai-assistant.ts (existing AI boundary read-back; exact edit only if required by this batch)
 - tests/security-boundaries.test.ts
 - tests/domain-validation.test.ts
 - tests/ai-transport.test.ts

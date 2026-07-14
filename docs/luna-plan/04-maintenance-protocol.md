@@ -20,7 +20,7 @@ rollback:
 next:
 ```
 
-`verified_complete` 只在所有要求的 evidence 都存在時使用；「沒有找到錯誤」不是完成證據。
+`verified_complete` 只在所有要求的 evidence 都存在時使用；rollback evidence 可依 `01-master-plan.md` 的 authorized historical reconstruction exception 被 fresh reviewer 接受；「沒有找到錯誤」不是完成證據。
 
 ## 每個 batch 的固定維護循環
 

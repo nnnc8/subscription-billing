@@ -3,7 +3,7 @@
 ## 已證實
 
 - repo：`/Users/nc8/subscription-billing`
-- project：`Users-nc8-subscription-billing`，Codebase MCP index ready
+- project：`Users-nc8-subscription-billing`，2026-07-13 baseline index was observed ready; current 2026-07-14 `list_projects` probe returned `Transport closed`, so this run used the documented narrow-read fallback and did not initialize an index
 - branch：dirty `main`
 - baseline HEAD：`6028913dd95e`
 - 38 route method/path integration inventory 存在且現有 tests 綠
@@ -73,13 +73,19 @@ docs/luna-plan/prompts/01a-durable-save-and-mutation-queue.md
 4. 401、dialog focus/Esc、tab state、toast 回歸；
 5. template/CI/config 看似正確但 installed/runtime/Docker 仍不可用。
 
+## Current execution update — 2026-07-14
+
+Batch 08 operator closure is verified complete under explicit user authorization. The installed plist is backed up at `/Users/nc8/.codex/agent-guide-backups/subscription-billing-launchagent-20260714-002854/`, the installed service runs `node + tsx + server.ts` with `active=1`, `/api/health` is ready, and the post-cutover error delta is zero. Credential review was redacted and review-only; no rotation or re-scope occurred. Temp authenticated browser smoke covered four navigation surfaces, state retention, three dialogs, real Esc, focus return and toast. Paid Gemini remains mock-only; 99 completion audit is the next exact prompt.
+
+The user explicitly authorized the historical reconstruction exception in `01-master-plan.md`; fresh reviewer 019f5fb7-6305-70f1-a4a2-85d4715cce6d confirmed PASS with P0=0/P1=0/P2=0. The reconstruction remains labeled as reconstruction, and the package is ready for commit/push and deployment verification.
+
 ## 最小升級包
 
 需要明確詢問使用者才可開始：
 
 - commit/push 或等待 GitHub job；
 - paid Gemini key 與成本授權；
-- installed LaunchAgent credential rotation/re-scope/cutover；
+- installed LaunchAgent credential rotation/re-scope；cutover is already complete for this authorization;
 - Docker production volume 或正式 DB 操作；
 - production deployment。
 

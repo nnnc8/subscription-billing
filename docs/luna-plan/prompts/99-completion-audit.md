@@ -59,7 +59,7 @@ Reviewer returns:
 severity | file | finding | evidence | required action
 ~~~
 
-P0 and P1 must be zero. Every P2 is fixed or listed in 01-master-plan.md with a concrete accepted reason. Re-run the reviewer after fixes.
+P0 and P1 must be zero under the canonical policy in `01-master-plan.md`. A missing execution-time original preimage may be resolved only by the explicitly authorized historical-reconstruction exception: complete patch ledger, exact reverse replay, materialized rollback artifact, SHA cross-check, explicit non-original labeling and fresh reviewer acceptance. Re-run the reviewer after the plan revision.
 
 ## Failure, retry and rollback
 
@@ -69,8 +69,8 @@ If any requirement is incomplete, keep the goal active and record the exact miss
 
 ## Evidence and next
 
-Record the audit matrix, fresh-review result, exact commands, SHA/runtime scope and every unknown. The next entry is the exact incomplete requirement, not a smaller substitute. Mark verified_complete only after the matrix has no incomplete or unknown required item.
+Record the audit matrix, fresh-review result, exact commands, SHA/runtime scope and every unknown. The next entry is the exact incomplete requirement, not a smaller substitute. Mark verified_complete only after the matrix has no incomplete or unknown required item and every historical reconstruction exception satisfies all six canonical conditions.
 
 ## Completion rule
 
-Call verified_complete only if every explicit requirement has matching current evidence. If an item is missing, keep the plan active and state the exact next action. “Tests pass”, “installed”, “configured”, “template points correctly” or “no obvious issue” cannot substitute for running/live proof.
+Call verified_complete only if every explicit requirement has matching current evidence under the canonical policy. If an item is missing, keep the plan active and state the exact next action. “Tests pass”, “installed”, “configured”, “template points correctly” or “no obvious issue” cannot substitute for running/live proof.
