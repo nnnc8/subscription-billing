@@ -177,7 +177,7 @@ There is one canonical ledger: the Evidence section of this file, updated per de
 | 06 | verified_complete | `a42ef98` + main; 2026-07-13 22:57 CI gate | coverage thresholds locked to measured floor; local/full CI verify and Docker build passed; CI Docker job needs verify | [07](prompts/07-docker-runtime-and-readme.md) |
 | 07 | verified_complete | `e8be9a2afa7a` + CI run [29261255991](https://github.com/nnnc8/subscription-billing/actions/runs/29261255991); ledger-only run [29261496919](https://github.com/nnnc8/subscription-billing/actions/runs/29261496919) also green | Dockerfile/.dockerignore/README/smoke updated; Node 22/24 verify and authenticated Docker volume smoke passed, including non-root UID, readiness, /data-only storage and recreation persistence | [08](prompts/08-operator-runtime-closure.md) operator gate |
 | 08 | verified_complete | `10573c39970db0859f19d287ebfd970c447d6969` + [operator evidence](evidence/2026-07-14-batch08-operator.md) | plist backup/cutover, redacted credential review, active LaunchAgent, ready health, 401 boundary, zero post-cutover error delta, temp authenticated browser smoke and mock-only AI proof | [99](prompts/99-completion-audit.md) |
-| 99 | verified_complete | `10573c39970db0859f19d287ebfd970c447d6969` + current docs revision | user-authorized historical reconstruction exception; fresh review PASS P0=0/P1=0/P2=0; verify/read-back passed | [99](prompts/99-completion-audit.md) |
+| 99 | verified_complete | `06c68dd212dd1975125ec323cfe2422e3ada5653` + [CI run 29318046775](https://github.com/nnnc8/subscription-billing/actions/runs/29318046775) | user-authorized historical reconstruction exception; fresh review PASS P0=0/P1=0/P2=0; local verify/read-back and post-push Node 22/24/Docker CI all passed | [99](prompts/99-completion-audit.md) |
 
 ### 01A evidence — 2026-07-13
 
@@ -493,6 +493,19 @@ result: PASS; P0 0, P1 0, P2 0
 finding: none; six-condition exception, reconstruction labeling, evidence, statuses, links and write sets are consistent
 checks: local pnpm verify passed (16 files / 117 tests); markdown link audit passed (20 files / no broken links); git diff --check passed; no product files changed
 next: commit and push the completed docs package, then verify CI and live runtime
+```
+
+### 99 deployment verification — 2026-07-14
+
+```text
+status: verified_complete
+commit: 06c68dd212dd1975125ec323cfe2422e3ada5653
+push: origin/main accepted; local HEAD and origin/main match
+ci: https://github.com/nnnc8/subscription-billing/actions/runs/29318046775; Node 22 verify success, Node 24 verify success, Docker build and scripts/docker-smoke.sh success
+deployment_surface: repository provides Docker and macOS LaunchAgent; no external hosting workflow is configured
+runtime: installed LaunchAgent state running/active=1; /api/health readiness=ready; unauthenticated /api/data=401; no new post-cutover error delta; installed service remains node + tsx + server.ts
+ai_scope: paid Gemini not executed; mock-only remains in force
+working_tree: clean after commit; no product/dependency/database/secret changes in the completion commit
 ```
 
 ### 99 audit attempt 5 — 2026-07-14
