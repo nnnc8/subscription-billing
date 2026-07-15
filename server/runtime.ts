@@ -65,10 +65,9 @@ export class DomainValidationError extends Error {
     }
 }
 
-type MutationJob<T> = {
-    mutator: (freshDb: Database) => T;
-    options: MutationOptions;
-    resolve: (result: MutationResult<T>) => void;
+type QueueJob<T> = {
+    execute: () => Promise<T>;
+    resolve: (result: T) => void;
     reject: (error: unknown) => void;
 };
 
@@ -221,7 +220,7 @@ export function createRuntime(options: RuntimeOptions = {}) {
         maxBackups: config.maxBackups,
         onlineBackup
     });
-    const mutationQueue: Array<MutationJob<unknown>> = [];
+    const mutationQueue: Array<QueueJob<unknown>> = [];
     let mutationWorkerRunning = false;
     let readiness: RuntimeReadiness = { status: 'starting' };
 
@@ -423,11 +422,11 @@ export function createRuntime(options: RuntimeOptions = {}) {
         }
     }
 
-    async function executeMutation<T>(job: MutationJob<T>): Promise<MutationResult<T>> {
+    async function executeMutation<T>(mutator: (freshDb: Database) => T, options: MutationOptions): Promise<MutationResult<T>> {
         const freshDb = readDB();
         if (!freshDb) throw new Error('Database error');
 
-        const value = job.mutator(freshDb);
+        const value = mutator(freshDb);
         if (isPromiseLike(value)) {
             throw new Error('Mutation callback must be synchronous');
         }
@@ -438,7 +437,7 @@ export function createRuntime(options: RuntimeOptions = {}) {
             throw new DomainValidationError(`Domain validation failed: ${integrityFailure}`);
         }
         try {
-            if (job.options.backup !== false && !await backup.backupDB()) {
+            if (options.backup !== false && !await backup.backupDB()) {
                 throw new Error('Database backup failed');
             }
             saveToSQLite(sqlitePath, freshDb);
@@ -450,6 +449,17 @@ export function createRuntime(options: RuntimeOptions = {}) {
         return { data: freshDb, value };
     }
 
+    function enqueueExclusive<T>(operation: () => Promise<T>): Promise<T> {
+        return new Promise((resolve, reject) => {
+            mutationQueue.push({
+                execute: operation,
+                resolve: resolve as (result: unknown) => void,
+                reject
+            });
+            void drainMutationQueue();
+        });
+    }
+
     async function drainMutationQueue(): Promise<void> {
         if (mutationWorkerRunning) return;
         mutationWorkerRunning = true;
@@ -457,7 +467,7 @@ export function createRuntime(options: RuntimeOptions = {}) {
             while (mutationQueue.length > 0) {
                 const job = mutationQueue.shift()!;
                 try {
-                    job.resolve(await executeMutation(job));
+                    job.resolve(await job.execute());
                 } catch (error) {
                     job.reject(error);
                 }
@@ -469,15 +479,7 @@ export function createRuntime(options: RuntimeOptions = {}) {
     }
 
     function mutateDB<T>(mutator: (freshDb: Database) => T, options: MutationOptions = {}): Promise<MutationResult<T>> {
-        return new Promise((resolve, reject) => {
-            mutationQueue.push({
-                mutator,
-                options,
-                resolve: resolve as (result: MutationResult<unknown>) => void,
-                reject
-            });
-            void drainMutationQueue();
-        });
+        return enqueueExclusive(() => executeMutation(mutator, options));
     }
 
     async function runStartupLifecycle(): Promise<void> {
@@ -505,6 +507,7 @@ export function createRuntime(options: RuntimeOptions = {}) {
         readDB,
         initializeAtomic,
         mutateDB,
+        enqueueExclusive,
         getReadiness: () => ({ ...readiness }),
         runStartupLifecycle,
         isAuthConfigured,

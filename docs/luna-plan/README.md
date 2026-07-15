@@ -1,8 +1,8 @@
 # Subscription Billing：Luna 決策完備執行套件
 
-更新日：2026-07-14
+更新日：2026-07-15
 
-這是 subscription-billing 的 safety-first execution package。它保留完整 Phase 2–6 目標，補上 01A–08 的實作邊界、證據、rollback 與 operator gate；目前 01A–08 已依證據完成，99 completion audit 尚待完成。
+這是 subscription-billing 的 safety-first execution package。它保留完整 Phase 2–6 目標，補上 01A–08 的實作邊界、證據、rollback 與 operator gate；01A、01B、04、05、06、08 保留歷史完成證據，02、03、07 因本輪 re-audit 發現缺口而重開，99 completion audit 維持 in_progress。
 
 ## 先讀
 
@@ -22,13 +22,13 @@ prompts/01a-durable-save-and-mutation-queue.md
 
 ## 目前的真相
 
-- `main` branch 的最新已驗證 SHA 是 `10573c39970db0859f19d287ebfd970c447d6969`；origin/main 在 operator proof 時一致，目前只留下本輪未提交的 planning evidence 變更。
+- 本輪從 `main` 的 `957f5f75ce9a3447e97aa2f9a2fe8a95ced5079f` 開始；目前 restore queue、OAuth response validation、Compose origin wiring 與文件修正尚未形成新的已驗證 SHA。
 - Codebase MCP `list_projects` 在本輪以 `Transport closed` 失敗；沒有初始化 index，後續以窄範圍 `rg`／direct read 作 documented fallback。
 - 01A–06 的 durable mutation、failure-atomic backup/restore、trust/domain/AI boundary、frontend DOM state、strict type/lint、coverage/verify/bundle/CI 已有本地與 CI 證據。
 - Batch 07 的 Node 22/24 verify 與 authenticated Docker smoke 已通過：non-root UID、ready health、dummy-auth member/payment/backup、`/data` 隔離與 volume recreation persistence 均有 runner log 證據。
 - lint zero、strict compiler flags、coverage floor 與 unified `pnpm verify` 已完成；Batch 08 的 installed LaunchAgent cutover 與 temp authenticated browser smoke 已完成。
 - installed LaunchAgent 現在執行 node + tsx + `server.ts`，`active=1`、health readiness ready、DATA_DIR 已驗證；舊 `server.cjs` 歷史錯誤沒有新增。付費 Gemini live proof 仍明確維持 mock-only。
-- Batch 08 的 redacted operator capture：[evidence/2026-07-14-batch08-operator.md](./evidence/2026-07-14-batch08-operator.md)。99 audit 仍 pending，因 fresh review 發現早期 batch 的歷史 preimage gap，不能用後來的 recovery snapshot 冒充原始 preimage。
+- Batch 08 的 redacted operator capture：[evidence/2026-07-14-batch08-operator.md](./evidence/2026-07-14-batch08-operator.md)。本輪 fresh review 發現的 restore queue、Compose `PUBLIC_ORIGIN`、OAuth response validation 與 LICENSE 缺口已修正；fresh review 現已 P0/P1/P2 全零，99 僅等待新的 exact CI SHA。
 
 ## 安全邊界
 

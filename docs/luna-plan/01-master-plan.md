@@ -1,6 +1,6 @@
 # Luna Canonical Master Plan
 
-更新日：2026-07-13  
+更新日：2026-07-15
 唯一 canonical plan。狀態、證據、failure log 與 rollback 以本檔及相鄰 runbook 為準。
 
 ## 交付目標
@@ -52,14 +52,14 @@
 |---|---|---|---|---|
 | 01A | durable save、mutation queue、payment/temp-charge exemplar | `server/runtime.ts`、`lib/db.ts`、`server/routes/shared.ts`、`server/routes/billing.ts`、新增 queue tests | baseline | verified_complete |
 | 01B | 一般 mutation、export attachment、readiness | data/settings/lifecycle/AI routes、runtime、integration tests | 01A | verified_complete |
-| 02 | migration/backup/restore/delete failure-atomic | `lib/db.ts`、runtime、backup service/routes、lifecycle tests | 01B | verified_complete |
-| 03 | trust domain、OAuth/CORS、AI schema/timeout boundary | server/runtime.ts、lib/accounting.ts、app/middleware/oauth/AI/validation、domain/security tests | 01A/02 | verified_complete |
+| 02 | migration/backup/restore/delete failure-atomic | `lib/db.ts`、runtime、backup service/routes、lifecycle tests | 01B | in_progress |
+| 03 | trust domain、OAuth/CORS、AI schema/timeout boundary | server/runtime.ts、lib/accounting.ts、app/middleware/oauth/AI/validation、domain/security tests | 01A/02 | in_progress |
 | 04 | mounted frontend state、401、DOM tests | `src/**`、Vitest/browser test setup、allowed dev deps | 03 | verified_complete |
 | 05 | strict compiler、lint zero | tsconfig.app/node/test、eslint、fixed warning paths plus pre-inventory exact strict-error paths、engine | 04 | verified_complete |
 | 06 | measured coverage、verify、bundle、CI | package/scripts/Vite/Vitest/CI | 05 | verified_complete |
-| 07 | Docker live smoke、README alignment | Docker files、README、smoke script | 06 | verified_complete |
+| 07 | Docker live smoke、README alignment | Docker files、README、smoke script | 06 | in_progress |
 | 08 | installed runtime/browser closure | operator-only installed plist/runtime; no unattended write | 07 | verified_complete |
-| 99 | completion audit and fresh review | docs status/evidence only; authorized reconstruction disposition is documented below | 01A–08 | verified_complete |
+| 99 | completion audit and fresh review | docs status/evidence only; authorized reconstruction disposition is documented below | 01A–08 | in_progress |
 
 ## A→G documentation crosswalk
 
@@ -170,14 +170,14 @@ There is one canonical ledger: the Evidence section of this file, updated per de
 |---|---|---|---|---|
 | 01A | verified_complete | `6028913dd95e` + dirty main; [baseline](evidence/2026-07-13-baseline.md) | 12 test files / 99 tests passed; `pnpm run verify`; app/node typecheck; temp DATA_DIR queue, concurrency, rollback and stale-snapshot proof | [01b](prompts/01b-route-cutover-export-readiness.md) |
 | 01B | verified_complete | `6028913dd95e` + dirty main; 2026-07-13 21:54 gate | fresh-state mutation cutover, export attachment, readiness blocking/503, 38-route inventory; targeted/full gates passed | [02](prompts/02-backup-restore-and-migration-safety.md) |
-| 02 | verified_complete | `6028913dd95e` + dirty main; 2026-07-13 22:05 gate | staged migration/restore, safety rollback, tombstone delete, retention and failure-branch tests passed | [03](prompts/03-trust-domain-and-ai-boundaries.md) |
-| 03 | verified_complete | `6028913dd95e` + dirty main; 2026-07-13 22:17 gate | trust/CORS/OAuth/AI schema and fresh-DB domain checks passed; MCP list_projects transport failure recorded | [04](prompts/04-frontend-state-and-dom-tests.md) |
+| 02 | in_progress | historical `6028913dd95e` gate; current dirty working tree | historical migration/restore/delete tests passed; current re-audit added restore-route serialization with the mutation queue and a concurrent regression test; fresh review P0/P1/P2 zero, CI pending | [03](prompts/03-trust-domain-and-ai-boundaries.md) |
+| 03 | in_progress | historical `6028913dd95e` gate; current dirty working tree | historical trust/CORS/OAuth/AI checks passed; current re-audit added Zod validation for token/userinfo responses and malformed-response tests; fresh review P0/P1/P2 zero, CI pending | [04](prompts/04-frontend-state-and-dom-tests.md) |
 | 04 | verified_complete | `6028913dd95e` + dirty main; 2026-07-13 22:26 gate | 2 targeted files / 6 DOM tests; full 16 files / 117 tests; app typecheck, build, diff check passed | [05](prompts/05-strict-types-and-lint.md) |
 | 05 | verified_complete | `6028913dd95e` + dirty main; 2026-07-13 22:37 gate | hardened app/node/test typechecks, lint zero, full tests, verify and build passed on Node 24.15.0 | [06](prompts/06-quality-gates-and-ci.md) |
 | 06 | verified_complete | `a42ef98` + main; 2026-07-13 22:57 CI gate | coverage thresholds locked to measured floor; local/full CI verify and Docker build passed; CI Docker job needs verify | [07](prompts/07-docker-runtime-and-readme.md) |
-| 07 | verified_complete | `e8be9a2afa7a` + CI run [29261255991](https://github.com/nnnc8/subscription-billing/actions/runs/29261255991); ledger-only run [29261496919](https://github.com/nnnc8/subscription-billing/actions/runs/29261496919) also green | Dockerfile/.dockerignore/README/smoke updated; Node 22/24 verify and authenticated Docker volume smoke passed, including non-root UID, readiness, /data-only storage and recreation persistence | [08](prompts/08-operator-runtime-closure.md) operator gate |
+| 07 | in_progress | historical `e8be9a2afa7a` + CI run [29261255991](https://github.com/nnnc8/subscription-billing/actions/runs/29261255991); current dirty working tree | historical Dockerfile/.dockerignore/README/smoke and CI Docker volume proof passed; current re-audit added Compose `PUBLIC_ORIGIN` wiring/documentation; fresh review P0/P1/P2 zero, CI pending | [08](prompts/08-operator-runtime-closure.md) operator gate |
 | 08 | verified_complete | `10573c39970db0859f19d287ebfd970c447d6969` + [operator evidence](evidence/2026-07-14-batch08-operator.md) | plist backup/cutover, redacted credential review, active LaunchAgent, ready health, 401 boundary, zero post-cutover error delta, temp authenticated browser smoke and mock-only AI proof | [99](prompts/99-completion-audit.md) |
-| 99 | verified_complete | `00ec047fbc9278b9537489968d859fd63ead95fe` + [CI run 29318203377](https://github.com/nnnc8/subscription-billing/actions/runs/29318203377) | user-authorized historical reconstruction exception; fresh review PASS P0=0/P1=0/P2=0; local verify/read-back and final post-push Node 22/24/Docker CI all passed | [99](prompts/99-completion-audit.md) |
+| 99 | in_progress | `957f5f75ce9a3447e97aa2f9a2fe8a95ced5079f` + dirty working tree | fresh reviewer found restore/queue serialization, Compose `PUBLIC_ORIGIN`, and OAuth external-response validation gaps; fixes are in progress, paid Gemini remains mock-only | [99](prompts/99-completion-audit.md) |
 
 ### 01A evidence — 2026-07-13
 
@@ -508,13 +508,35 @@ ai_scope: paid Gemini not executed; mock-only remains in force
 working_tree: clean after commit; no product/dependency/database/secret changes in the completion commit
 ```
 
-### 99 audit attempt 5 — 2026-07-14
+### 99 audit attempt 5 — 2026-07-14 (backfilled historical entry)
 
 ```text
 status: in_progress
 authority: user maximum-authority instruction received after attempt 4; plan revision is now authorized
 scope: accept the documented historical reconstruction exception only; preserve original-capture labeling and all safety gates
 next: fresh read-only reviewer must audit the revised rule and reconstruction evidence; then run final verify/read-back
+```
+
+### 99 implementation re-audit — 2026-07-15
+
+```text
+status: in_progress
+reviewer: fresh read-only agent 019f647f-7c03-7850-ae2d-168120ae4da8; current-source audit before the fixes below
+result: FAIL; P0 0, P1 3, P2 3
+findings: restore route bypassed the mutation queue; Docker Compose did not pass PUBLIC_ORIGIN to the cloud-binding server; Google token/userinfo responses were not Zod-validated; README referenced a missing LICENSE
+required_changes: enqueue restore as one exclusive operation, add strict external response schemas/tests, document Compose origin wiring, add LICENSE, then rerun verify, fresh review and CI
+scope: product/runtime/test/docs/config changes are authorized by the current implementation goal; formal DB, secrets, paid Gemini and production volume remain excluded
+next: targeted tests and full verify after implementation; 99 remains in_progress until fresh review and exact CI SHA pass
+```
+
+### 99 implementation re-audit follow-up — 2026-07-15
+
+```text
+status: in_progress
+reviewer: fresh read-only agent 019f64a0-a8e2-7243-ab8a-0aa5c872d002; current-file consistency gate after the implementation fixes
+result: PASS; P0 0, P1 0, P2 0
+checks: current 02/03/07/99 statuses agree across README, audit, handoff, runbook and prompts; historical sections are explicitly dated/superseded; restore queue, OAuth Zod validation, Compose origin wiring and LICENSE evidence remain present; git diff --check passed
+next: commit/push, inspect the exact pushed SHA's Node 22/24 and authenticated Docker smoke CI, then update this ledger with final evidence
 ```
 
 ### 07 CI smoke wiring correction — 2026-07-13

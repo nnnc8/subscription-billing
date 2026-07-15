@@ -8,7 +8,7 @@
 4. Record branch, SHA, dirty status, exact write set and forbidden set.
 5. Check whether the target `docs/luna-plan` already exists. If it did before this documentation run, exclude any `backups/` and copy existing files to `docs/luna-plan/backups/<timestamp>/` before replacement.
 6. Confirm all product/integration tests will use temp `DATA_DIR`, dynamic port and dummy credentials.
-7. Start only the next pending batch. Do not run 08 unattended.
+7. Start only the next batch whose canonical status is `in_progress` or `pending`; current re-audit entries take precedence over historical batch order. Do not run 08 unattended.
 
 ## Routing
 

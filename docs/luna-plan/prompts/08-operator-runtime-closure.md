@@ -8,7 +8,7 @@ Close installed LaunchAgent, local runtime and authenticated browser behavior wi
 
 - The runner must prepend or read docs/luna-plan/02-luna-runbook.md; direct invocation without it is invalid.
 
-- 07 is verified_complete.
+- Historical prerequisite record: Batch 07 has a completed Docker proof, while its current re-verification is `in_progress`. This prompt remains the historical Batch 08 contract; current execution must follow the canonical ledger and must not promote Batch 08 before Batch 07 is verified.
 - First action is redacted read-only capture.
 - This prompt must stop before any installed plist, credential, service state, browser session or paid key change unless the user gives explicit authorization in the current task.
 

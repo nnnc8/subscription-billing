@@ -163,4 +163,49 @@ describe('failure-atomic restore', () => {
         expect(hiddenFiles(state.backupDir, '.restore-safety-')).toHaveLength(0);
         expect(hiddenFiles(state.directory, '.restore-stage-')).toHaveLength(0);
     });
+
+    it('serializes restore ahead of a concurrent mutation without losing the later write', async () => {
+        const state = makeLiveDatabase();
+        const backupPath = path.join(state.backupDir, 'database_20260715_000000_000_abcdef12.db');
+        await backupSQLite(state.sqlitePath, backupPath);
+
+        let releaseRestore!: () => void;
+        let signalRestoreStarted!: () => void;
+        const restoreStarted = new Promise<void>(resolve => {
+            signalRestoreStarted = resolve;
+        });
+        const restoreGate = new Promise<void>(resolve => {
+            releaseRestore = resolve;
+        });
+        let backupCalls = 0;
+        const runtime = makeRuntime(state, {
+            onlineBackup: async (sourcePath, destinationPath) => {
+                backupCalls += 1;
+                if (backupCalls === 1) {
+                    signalRestoreStarted();
+                    await restoreGate;
+                }
+                await backupSQLite(sourcePath, destinationPath);
+            }
+        });
+
+        const restore = runtime.enqueueExclusive(() => runtime.restoreSQLiteFromBackup(backupPath, {
+            type: 'backup.restored',
+            summary: 'concurrent restore test',
+            entityType: 'backup',
+            entityId: path.basename(backupPath),
+            payload: { filename: path.basename(backupPath) }
+        }));
+        await restoreStarted;
+        const mutation = runtime.mutateDB(db => {
+            db.bankInfo = 'mutation after restore';
+        }, { backup: false });
+        releaseRestore();
+        await Promise.all([restore, mutation]);
+
+        const finalDb = runtime.readDB()!;
+        expect(finalDb.bankInfo).toBe('mutation after restore');
+        expect(finalDb.ledger.entries.at(-1)?.type).toBe('backup.restored');
+        expect(finalDb.ledger.entries.some(entry => entry.type === 'backup.restored')).toBe(true);
+    });
 });

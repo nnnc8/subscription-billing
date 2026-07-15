@@ -1,10 +1,32 @@
 import type { GoogleOAuthConfig } from '../src/types/billing.js';
+import { z } from 'zod';
 
 const DEFAULT_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const DEFAULT_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DEFAULT_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 
 export const GOOGLE_SCOPE = 'openid email profile';
+
+const googleTokenResponseSchema = z.object({
+    access_token: z.string().min(1).max(10_000),
+    token_type: z.string().max(32).optional(),
+    expires_in: z.number().finite().nonnegative().optional(),
+    refresh_token: z.string().max(10_000).optional(),
+    scope: z.string().max(10_000).optional(),
+    id_token: z.string().max(10_000).optional()
+}).passthrough();
+
+const googleUserinfoResponseSchema = z.object({
+    email: z.string().email().max(320),
+    email_verified: z.boolean().optional(),
+    name: z.string().max(200).optional(),
+    picture: z.string().url().max(2_000).optional(),
+    sub: z.string().min(1).max(200).optional()
+}).passthrough();
+
+function googleUpstreamError(message: string): Error & { status: number } {
+    return Object.assign(new Error(message), { status: 502 });
+}
 
 export function normalizeOrigin(value: string | undefined): string | null {
     try {
@@ -106,24 +128,18 @@ export async function exchangeGoogleCode({ config, code, redirectUri, fetchImpl 
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body
     });
-    const payload: Record<string, unknown> = await res.json().catch(() => ({}));
-    if (!res.ok || !payload.access_token) {
-        const err = new Error('Google token exchange failed');
-        (err as Error & { status: number }).status = 502;
-        throw err;
-    }
-    return payload;
+    const payload: unknown = await res.json().catch(() => ({}));
+    const parsed = googleTokenResponseSchema.safeParse(payload);
+    if (!res.ok || !parsed.success) throw googleUpstreamError('Google token exchange failed');
+    return parsed.data;
 }
 
 export async function fetchGoogleUserinfo({ config, accessToken, fetchImpl = fetch }: { config: GoogleOAuthConfig; accessToken: string; fetchImpl?: typeof fetch }): Promise<Record<string, unknown>> {
     const res = await fetchImpl(config.userinfoUrl, {
         headers: { Authorization: `Bearer ${accessToken}` }
     });
-    const payload: Record<string, unknown> = await res.json().catch(() => ({}));
-    if (!res.ok || !payload.email) {
-        const err = new Error('Google userinfo fetch failed');
-        (err as Error & { status: number }).status = 502;
-        throw err;
-    }
-    return payload;
+    const payload: unknown = await res.json().catch(() => ({}));
+    const parsed = googleUserinfoResponseSchema.safeParse(payload);
+    if (!res.ok || !parsed.success) throw googleUpstreamError('Google userinfo fetch failed');
+    return parsed.data;
 }

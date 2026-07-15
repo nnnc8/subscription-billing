@@ -3,6 +3,7 @@ import path from 'node:path';
 import { Router } from 'express';
 import { z } from 'zod';
 import { appendLedgerEvent, getSystemSnapshot } from '../../lib/accounting.js';
+import { httpError } from '../middleware/error.js';
 import { emptyPayloadSchema, parseInput } from '../middleware/validation.js';
 import type { Runtime } from '../runtime.js';
 import { mutateAndSend, readDatabase, sendDatabase } from './shared.js';
@@ -31,19 +32,17 @@ export function createBackupRouter(runtime: Runtime): Router {
 
     router.post('/api/backups/restore', async (req, res) => {
         const { filename } = parseInput(restoreSchema, req.body, '請指定備份檔案名稱');
-        const backupPath = runtime.safeBackupPath(filename);
-        if (!fs.existsSync(backupPath)) {
-            res.status(404).json({ error: '備份檔案不存在' });
-            return;
-        }
-
-        runtime.validateBackupDatabase(backupPath);
-        const restoredDb = await runtime.restoreSQLiteFromBackup(backupPath, {
-            type: 'backup.restored',
-            summary: `還原備份 ${filename}`,
-            entityType: 'backup',
-            entityId: filename,
-            payload: { filename }
+        const restoredDb = await runtime.enqueueExclusive(async () => {
+            const backupPath = runtime.safeBackupPath(filename);
+            if (!fs.existsSync(backupPath)) throw httpError(404, '備份檔案不存在');
+            runtime.validateBackupDatabase(backupPath);
+            return runtime.restoreSQLiteFromBackup(backupPath, {
+                type: 'backup.restored',
+                summary: `還原備份 ${filename}`,
+                entityType: 'backup',
+                entityId: filename,
+                payload: { filename }
+            });
         });
         sendDatabase(res, restoredDb, { message: `已還原至 ${filename}` });
     });

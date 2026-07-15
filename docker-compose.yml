@@ -14,7 +14,10 @@ services:
       - GOOGLE_CLIENT_ID
       - GOOGLE_CLIENT_SECRET
       - GOOGLE_ALLOWED_EMAILS
+      - PUBLIC_ORIGIN
       - GOOGLE_REDIRECT_URI
+      - ALLOWED_ORIGINS
+      - TRUST_PROXY_CIDRS
       - COOKIE_SECURE=true
     volumes:
       - billing_data:/data

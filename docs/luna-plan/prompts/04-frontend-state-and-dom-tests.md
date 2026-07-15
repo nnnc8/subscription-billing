@@ -8,7 +8,7 @@ Preserve state across four navigation surfaces and make auth/dialog/focus/toast 
 
 - The runner must prepend or read docs/luna-plan/02-luna-runbook.md; direct invocation without it is invalid.
 
-- 03 is verified_complete.
+- Historical prerequisite record: Batch 03 has a completed implementation baseline, while its current re-verification is `in_progress`. This prompt remains the historical Batch 04 contract; current execution must follow the canonical ledger and must not promote Batch 04 before Batch 03 is verified.
 - Existing four navigation IDs remain dashboard, subscriptions, config and history.
 - Do not add Members or Backup as top-level tabs.
 

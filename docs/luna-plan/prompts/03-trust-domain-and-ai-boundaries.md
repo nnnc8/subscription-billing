@@ -8,7 +8,7 @@ Close the trust boundary at HTTP/OAuth/CORS/AI edges while keeping business inva
 
 - The runner must prepend or read docs/luna-plan/02-luna-runbook.md; direct invocation without it is invalid.
 
-- 01A, 01B and 02 are verified_complete.
+- Historical prerequisite record: 01A and 01B have verified evidence, while Batch 02 is currently `in_progress` for re-verification. This prompt remains the historical Batch 03 contract; current execution must follow the canonical ledger and must not promote Batch 03 before Batch 02 is verified.
 - Use fake credentials and mock external fetch. Paid Gemini is not allowed in this batch.
 
 ## Exact write set
