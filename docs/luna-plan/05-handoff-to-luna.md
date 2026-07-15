@@ -73,13 +73,13 @@ docs/luna-plan/prompts/01a-durable-save-and-mutation-queue.md
 4. 401、dialog focus/Esc、tab state、toast 回歸；
 5. template/CI/config 看似正確但 installed/runtime/Docker 仍不可用。
 
-## Current execution update — 2026-07-15
+## Current execution update — 2026-07-15 (final)
 
-Batch 08 operator closure is verified complete under explicit user authorization. The installed plist is backed up at `/Users/nc8/.codex/agent-guide-backups/subscription-billing-launchagent-20260714-002854/`, the installed service runs `node + tsx + server.ts` with `active=1`, `/api/health` is ready, and the post-cutover error delta is zero. Credential review was redacted and review-only; no rotation or re-scope occurred. Temp authenticated browser smoke covered four navigation surfaces, state retention, three dialogs, real Esc, focus return and toast. Paid Gemini remains mock-only; the 99 completion audit is currently reopened for implementation re-audit.
+Batch 08 operator closure is verified complete under explicit user authorization. The installed plist is backed up at `/Users/nc8/.codex/agent-guide-backups/subscription-billing-launchagent-20260714-002854/`, the installed service runs `node + tsx + server.ts` with `active=1`, `/api/health` is ready, and the post-cutover error delta is zero. Credential review was redacted and review-only; no rotation or re-scope occurred. Temp authenticated browser smoke covered four navigation surfaces, state retention, three dialogs, real Esc, focus return and toast. Paid Gemini remains mock-only; the 99 completion audit is verified complete on the exact SHA below.
 
-The user explicitly authorized the historical reconstruction exception in `01-master-plan.md`; that prior review is historical evidence only. The 2026-07-15 implementation re-audit fixes restore queue serialization, OAuth external-response validation, Compose `PUBLIC_ORIGIN` wiring and the missing LICENSE. Local verify is green and the latest independent review is P0/P1/P2 zero; current Batch 02/03/07 and 99 remain `in_progress` only until a new exact CI SHA passes. The installed LaunchAgent remains active and ready; the repository has no external hosting workflow beyond Docker/LaunchAgent.
+The user explicitly authorized the historical reconstruction exception in `01-master-plan.md`; that prior review is historical evidence only. The 2026-07-15 implementation re-audit fixes restore queue serialization, OAuth external-response validation, Compose `PUBLIC_ORIGIN` wiring and the missing LICENSE. Local verify is green, the latest independent review is P0/P1/P2 zero, and exact SHA `9ed81431b18048e39bd7d2d809e5ffcdb7401b62` passed CI run 29396905434. Batch 02/03/07 and 99 are now `verified_complete`; the installed LaunchAgent remains active and ready; the repository has no external hosting workflow beyond Docker/LaunchAgent.
 
-Current authoritative next step: run the final fresh read-only review, then commit/push this worktree and require the same pushed SHA to pass Node 22, Node 24 and authenticated Docker smoke. Do not run paid Gemini, credential rotation, formal DB/backup operations or production-volume actions.
+Current authoritative next step: maintenance only. Any further product or plan change requires a new audit and exact CI proof. Do not run paid Gemini, credential rotation, formal DB/backup operations or production-volume actions without separate authorization.
 
 ## 最小升級包
 

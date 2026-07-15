@@ -2,7 +2,7 @@
 
 更新日：2026-07-15
 
-這是 subscription-billing 的 safety-first execution package。它保留完整 Phase 2–6 目標，補上 01A–08 的實作邊界、證據、rollback 與 operator gate；01A、01B、04、05、06、08 保留歷史完成證據，02、03、07 因本輪 re-audit 發現缺口而重開，99 completion audit 維持 in_progress。
+這是 subscription-billing 的 safety-first execution package。它保留完整 Phase 2–6 目標，補上 01A–08 的實作邊界、證據、rollback 與 operator gate；本輪已完成 02、03、07 的 re-verification 與 99 completion audit。
 
 ## 先讀
 
@@ -22,13 +22,13 @@ prompts/01a-durable-save-and-mutation-queue.md
 
 ## 目前的真相
 
-- 本輪從 `main` 的 `957f5f75ce9a3447e97aa2f9a2fe8a95ced5079f` 開始；目前 restore queue、OAuth response validation、Compose origin wiring 與文件修正尚未形成新的已驗證 SHA。
+- `main` 的 current deployed SHA 是 `9ed81431b18048e39bd7d2d809e5ffcdb7401b62`；同一 SHA 的 [CI run 29396905434](https://github.com/nnnc8/subscription-billing/actions/runs/29396905434) 已通過 Node 22、Node 24 與 authenticated Docker smoke。
 - Codebase MCP `list_projects` 在本輪以 `Transport closed` 失敗；沒有初始化 index，後續以窄範圍 `rg`／direct read 作 documented fallback。
 - 01A–06 的 durable mutation、failure-atomic backup/restore、trust/domain/AI boundary、frontend DOM state、strict type/lint、coverage/verify/bundle/CI 已有本地與 CI 證據。
 - Batch 07 的 Node 22/24 verify 與 authenticated Docker smoke 已通過：non-root UID、ready health、dummy-auth member/payment/backup、`/data` 隔離與 volume recreation persistence 均有 runner log 證據。
 - lint zero、strict compiler flags、coverage floor 與 unified `pnpm verify` 已完成；Batch 08 的 installed LaunchAgent cutover 與 temp authenticated browser smoke 已完成。
 - installed LaunchAgent 現在執行 node + tsx + `server.ts`，`active=1`、health readiness ready、DATA_DIR 已驗證；舊 `server.cjs` 歷史錯誤沒有新增。付費 Gemini live proof 仍明確維持 mock-only。
-- Batch 08 的 redacted operator capture：[evidence/2026-07-14-batch08-operator.md](./evidence/2026-07-14-batch08-operator.md)。本輪 fresh review 發現的 restore queue、Compose `PUBLIC_ORIGIN`、OAuth response validation 與 LICENSE 缺口已修正；fresh review 現已 P0/P1/P2 全零，99 僅等待新的 exact CI SHA。
+- Batch 08 的 redacted operator capture：[evidence/2026-07-14-batch08-operator.md](./evidence/2026-07-14-batch08-operator.md)。本輪 fresh review 已 P0/P1/P2 全零；restore queue、Compose `PUBLIC_ORIGIN`、OAuth response validation 與 LICENSE 缺口已修正並由 current SHA/CI 證明。
 
 ## 安全邊界
 

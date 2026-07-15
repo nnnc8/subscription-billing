@@ -113,9 +113,9 @@ pnpm exec tsc --noEmit -p tsconfig.node.json
 
 本檔的「已證實」只代表上述 live read-only evidence，不代表 9 個 delivery batches 或 99 audit 已完成。
 
-## Current execution delta — 2026-07-15
+## Current execution delta — 2026-07-15 (pre-CI; superseded by completion delta below)
 
-本節 supersede 上述 historical baseline 的「目前」語意；當前 worktree 是 `main`、base `957f5f75ce9a3447e97aa2f9a2fe8a95ced5079f` 加上未提交的 implementation/re-audit changes。
+本節記錄 exact-SHA CI 前的 re-audit state；它 superseded 早期 baseline，但已再由下方 completion delta supersede。當時 worktree 是 `main`、base `957f5f75ce9a3447e97aa2f9a2fe8a95ced5079f` 加上未提交的 implementation/re-audit changes。
 
 - Batch 01A/01B/04/05/06/08 保留既有完成證據；Batch 02、03、07 因 current fresh review 發現缺口而 `in_progress`，99 也維持 `in_progress`。
 - Batch 02 修正完成：restore route 的檔案檢查、validation 與 failure-atomic restore 現在由 `runtime.enqueueExclusive` 與一般 mutation 共用 FIFO worker；新增 concurrent restore-vs-mutation fingerprint/ledger regression test。
@@ -123,3 +123,9 @@ pnpm exec tsc --noEmit -p tsconfig.node.json
 - Batch 07 修正完成：`.env.example` 與 `docker-compose.yml` 明示 `PUBLIC_ORIGIN`、redirect/origin/proxy variables；本機沒有 Docker binary，因此 Compose live smoke 仍必須由新的 CI SHA 證明，不能提前宣稱 local Docker proof。
 - LICENSE link 已補齊；`pnpm run verify` 已通過 17 test files / 121 tests，coverage statements 63.81%、branches 52.34%、functions 64.77%、lines 66.24%，build/bundle gate 亦通過。
 - Required next proof：fresh read-only reviewer 已回報 P0/P1/P2 all zero；commit/push 後取得同一 SHA 的 Node 22、Node 24 與 authenticated Docker smoke CI，再重新 read-back current docs。尚未執行 paid Gemini、正式 DB/backup/volume 或 credential rotation。
+
+## Current completion delta — 2026-07-15
+
+`9ed81431b18048e39bd7d2d809e5ffcdb7401b62` 已 push 到 `origin/main`；同一 SHA 的 [CI run 29396905434](https://github.com/nnnc8/subscription-billing/actions/runs/29396905434) 通過 Node 22、Node 24、Docker build 與 authenticated `scripts/docker-smoke.sh`。Fresh reviewer 019f64a0-a8e2-7243-ab8a-0aa5c872d002 回報 P0/P1/P2 全零。
+
+Installed LaunchAgent 已重新載入 current commit：redacted plist projection 是 `node + tsx + server.ts`、`active count=1`、`state=running`、DATA_DIR 為 project root；`/api/health` ready、未登入 `/api/data` 回 401。付費 Gemini、credential rotation、正式 DB/backup/volume 均未執行；因此產品可繼續使用，AI live proof 仍明確是 mock-only。
