@@ -17,7 +17,8 @@ export interface MemberBalanceSummary {
 }
 
 export function formatMoney(value: number | null | undefined): string {
-  return `$${Number(value ?? 0).toLocaleString()}`;
+  const amount = Number(value ?? 0);
+  return `${amount < 0 ? '-' : ''}$${Math.abs(amount).toLocaleString()}`;
 }
 
 export function isVoidedTransaction(transaction: Payment | TempCharge): boolean {

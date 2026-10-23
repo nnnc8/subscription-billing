@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Send } from 'lucide-react';
 import type { FormEvent } from 'react';
 import type { AIMessage } from '../types/billing.js';
 
@@ -11,6 +12,13 @@ interface AiAssistantTabProps {
   handleSendChatMessage: (event: FormEvent<HTMLFormElement>) => void;
 }
 
+const SUGGESTIONS: ReadonlyArray<{ label: string; prompt: string }> = [
+  { label: '誰還沒繳錢', prompt: '這個月誰還沒有結清帳款？' },
+  { label: '帳務警告', prompt: '有哪些會計警告或異常嗎？' },
+  { label: '本期概況', prompt: '系統當前帳務的整體概況為何？' },
+  { label: '預繳最多的人', prompt: '目前誰的預繳餘額最多？' },
+];
+
 export function AiAssistantTab({
   aiMessages,
   aiInput,
@@ -19,30 +27,19 @@ export function AiAssistantTab({
   handleSendChatMessage
 }: AiAssistantTabProps) {
   return (
-    <div className="ai-assistant-container">
-      <div className="ai-chat-header">
-        <div className="ai-chat-header-title">
-          <span style={{ fontSize: '1.5rem' }}>✨</span>
-          <div>
-            <h2>AI 帳務助理</h2>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              結合 RAG 向量搜尋與智能 Tool Calling 對話查帳
-            </span>
-          </div>
+    <article className="card assistant">
+      <header className="card-head">
+        <div>
+          <h2>AI 帳務助理</h2>
+          <p className="meta">查詢成員餘額、付款紀錄與帳務提醒，回答來自目前的帳務資料。</p>
         </div>
-        <div className="ai-status-badge">
-          <span className="ai-typing-dot" style={{ width: '8px', height: '8px', background: '#34d399', opacity: 1, animation: 'none' }}></span>
-          Google AI Studio 已啟用
-        </div>
-      </div>
+      </header>
 
-      <div className="ai-messages-area" id="ai-messages-container" aria-live="polite" aria-busy={aiLoading}>
+      <div className="assistant-messages" id="ai-messages-container" aria-live="polite" aria-busy={aiLoading}>
         {aiMessages.map((msg) => (
-          <div key={msg.id ?? `${msg.role}-${msg.content}`} className={`ai-message ${msg.role === 'user' ? 'user' : msg.role === 'system' ? 'system-info' : 'assistant'}`}>
+          <div key={msg.id ?? `${msg.role}-${msg.content}`} className={`bubble ${msg.role === 'user' ? 'user' : msg.role === 'system' ? 'system-info' : 'assistant'}`}>
             {msg.tool_calls && msg.tool_calls.map((t, idx) => (
-              <div key={t.id ?? `${t.function.name}-${idx}`} className="ai-message-tool-badge">
-                🛠️ 呼叫工具: {t.function.name}
-              </div>
+              <span key={t.id ?? `${t.function.name}-${idx}`} className="tool-call">查詢工具：{t.function.name}</span>
             ))}
             {msg.role === 'user' ? (
               msg.content
@@ -54,38 +51,31 @@ export function AiAssistantTab({
           </div>
         ))}
         {aiLoading && (
-          <div className="ai-message assistant" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div className="ai-typing-indicator">
-              <span className="ai-typing-dot"></span>
-              <span className="ai-typing-dot"></span>
-              <span className="ai-typing-dot"></span>
-            </div>
-            <span>助理正在思考並查詢資料庫中...</span>
+          <div className="bubble assistant">
+            <span className="typing"><span className="typing-dots" aria-hidden="true"><span /><span /><span /></span>正在查詢帳務資料…</span>
           </div>
         )}
       </div>
 
-      <div className="ai-input-area">
-        <div className="ai-chat-suggestions">
-          <button type="button" className="ai-suggestion-chip" onClick={() => setAiInput("有哪些會計警告或異常嗎？")}>🔍 檢查會計警告</button>
-          <button type="button" className="ai-suggestion-chip" onClick={() => setAiInput("系統當前帳務的整體概況為何？")}>📊 系統整體概況</button>
-          <button type="button" className="ai-suggestion-chip" onClick={() => setAiInput("這個月誰還沒有結清帳款？")}>💸 誰還沒繳錢</button>
-          <button type="button" className="ai-suggestion-chip" onClick={() => setAiInput("查詢 Member Beta 的歷史付款紀錄")}>🕒 Beta 歷史紀錄</button>
-        </div>
-        <form className="ai-input-form" onSubmit={handleSendChatMessage}>
-          <input
-            type="text"
-            className="ai-chat-input"
-            placeholder="問我任何關於帳務的問題，例如: 'Beta 以前繳了多少錢？'..."
-            value={aiInput}
-            onChange={(e) => setAiInput(e.target.value)}
-            disabled={aiLoading}
-          />
-          <button type="submit" className="ai-chat-send-btn" disabled={aiLoading || !aiInput.trim()}>
-            傳送 ✨
-          </button>
-        </form>
+      <div className="suggestions">
+        {SUGGESTIONS.map((item) => (
+          <button key={item.label} type="button" onClick={() => setAiInput(item.prompt)}>{item.label}</button>
+        ))}
       </div>
-    </div>
+      <form className="assistant-form" onSubmit={handleSendChatMessage}>
+        <input
+          type="text"
+          className="input"
+          aria-label="詢問 AI 帳務助理"
+          placeholder="例如：宇辰這三個月繳了多少？"
+          value={aiInput}
+          onChange={(e) => setAiInput(e.target.value)}
+          disabled={aiLoading}
+        />
+        <button type="submit" className="btn btn-primary" disabled={aiLoading || !aiInput.trim()}>
+          <Send size={16} />傳送
+        </button>
+      </form>
+    </article>
   );
 }
