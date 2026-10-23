@@ -76,6 +76,7 @@ GOOGLE_GEMINI_API_KEY=<your-gemini-api-key>  # Optional AI Studio key
 PUBLIC_ORIGIN=http://127.0.0.1:3000
 # ALLOWED_ORIGINS=https://billing.example.com
 # TRUST_PROXY_CIDRS=10.0.0.0/8
+# CLIENT_IP_HEADER=fly-client-ip  # header your proxy always overwrites; used for rate limiting
 ```
 
 ### Running
@@ -182,6 +183,12 @@ pnpm run lint
 
 ## Deployment
 
+### Fly.io (public HTTPS, any device)
+
+`fly.toml` deploys the Docker image to a single Fly Machine with a persistent volume, daily volume snapshots and Google sign-in. Follow the step-by-step guide in [docs/deploy-fly.md](docs/deploy-fly.md) (Traditional Chinese): create the app and volume, register the OAuth redirect URI `https://<app>.fly.dev/api/auth/callback`, set secrets, deploy, and migrate an existing `database.db`.
+
+Run exactly one instance: SQLite and the in-process mutation queue do not support horizontal scaling.
+
 ### Docker
 
 ```bash
@@ -196,7 +203,7 @@ scripts/docker-smoke.sh
 
 The smoke uses a named temporary volume, dummy signed authentication, a dynamic host port, and removes the container/volume on exit. A fresh production volume must be initialized from an operator-approved database; the smoke alone uses the demo fixture with `MIGRATE_FROM_JSON=1`.
 
-The server exposes 38 `/api` routes. `/api/health` returns 503 until atomic initialization, migration, lifecycle and domain checks are ready.
+The server exposes 39 `/api` routes. `/api/health` returns 503 until atomic initialization, migration, lifecycle and domain checks are ready; anonymous callers only see `ok`, `authConfigured` and `readiness`.
 
 ### macOS Background Service
 
@@ -212,6 +219,7 @@ pnpm run launchd:uninstall  # Remove service
 | `GET` | `/api/health`, `/api/auth/session`, `/api/auth/login` | Health and auth state/login |
 | `GET` | `/api/auth/callback` | Google OAuth callback |
 | `POST` | `/api/auth/logout` | End the local session |
+| `POST` | `/api/auth/logout-all` | Revoke every existing session on all devices |
 | `GET` | `/api/data`, `/api/export-json` | Read state or download JSON attachment |
 | `POST` | `/api/payment`, `/api/temp-charge` | Record billing transactions |
 | `DELETE` | `/api/payment/:id`, `/api/temp-charge/:id` | Void transactions |
