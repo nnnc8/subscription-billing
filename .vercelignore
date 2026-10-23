@@ -1,0 +1,23 @@
+# Vercel builds from the source and reads data from Turso.
+# Keep local databases, backups, secrets and build leftovers out of CLI uploads.
+# Folders are anchored to the root so bundled packages keep their own dist/ and data/.
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+database.json
+database.json.*.tmp
+/data/
+/backups/
+auth-state.json
+auth-state.json.*.tmp
+.env
+.env.*
+.privacy-terms
+.privacy-terms.*
+session_handoff.md
+*.log
+/coverage/
+/dist/
+/.pnpm-store/
+/.taste-skill/

@@ -159,6 +159,8 @@ pnpm migrate:turso --source /安全副本/database.db
 雲端也不需要 `DATA_DIR` 或 `SQLITE_PATH`。
 不要把正式資料或憑證放進 `dist`。
 靜態檔案只應包含 Vite 的網頁與素材。
+`.vercelignore` 會排除本機資料庫、備份與 `.env` 檔。
+CLI 部署時，這些檔案不會上傳到 Vercel。
 
 Preview 環境應使用獨立測試資料庫。
 不要讓任意預覽分支寫入正式帳務。
