@@ -7,7 +7,7 @@ import {
     getSystemSnapshot,
     resolveMember
 } from '../../lib/accounting.js';
-import { getCanonicalPersistedFingerprint } from '../../lib/db.js';
+import { getCanonicalPersistedFingerprint, getConfigVersion } from '../../lib/db.js';
 import type { Database, LedgerEvent, Member } from '../../src/types/billing.js';
 import { httpError } from '../middleware/error.js';
 import {
@@ -36,9 +36,16 @@ export function withAudit(db: Database): Database & { _audit: Record<string, unk
             generatedAt: new Date().toISOString(),
             warnings: findAccountingWarnings(db),
             ledger: getLedgerSummary(db),
-            snapshot: getSystemSnapshot(db)
+            snapshot: getSystemSnapshot(db),
+            configVersion: getConfigVersion(db)
         }
     };
+}
+
+export function assertConfigVersion(db: Database, baseVersion: string | undefined): void {
+    if (baseVersion !== undefined && baseVersion !== getConfigVersion(db)) {
+        throw httpError(409, '資料已在其他裝置更新，請重新整理後再儲存');
+    }
 }
 
 export function sendDatabase(res: Response, db: Database, extra: Record<string, unknown> = {}): void {

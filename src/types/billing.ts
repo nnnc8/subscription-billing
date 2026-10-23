@@ -194,6 +194,7 @@ export interface DatabaseAudit {
   warnings: AuditWarning[]
   ledger: AuditLedgerSummary
   snapshot: SystemSnapshot
+  configVersion?: string
 }
 
 export interface ClosePreview {

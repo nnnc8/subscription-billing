@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,6 +67,24 @@ function sortCanonicalValue(value: unknown): unknown {
 
 export function getCanonicalPersistedFingerprint(data: Database): string {
   return JSON.stringify(sortCanonicalValue(getCanonicalPersistedProjection(data)));
+}
+
+/**
+ * Version of the settings the bulk-replace routes overwrite (platforms, members, subscriptions,
+ * bank info, reminder style). Clients echo it back so a save from a stale device is refused
+ * instead of silently undoing changes made elsewhere, including month-close balance carry-over.
+ */
+export function getConfigVersion(data: Database): string {
+  const projection = getCanonicalPersistedProjection(data);
+  const settings = projection.settings as Record<string, unknown>;
+  const config = sortCanonicalValue({
+    platforms: projection.platforms,
+    members: projection.members,
+    subscriptions: projection.subscriptions,
+    bankInfo: settings.bankInfo,
+    reminderStyle: settings.reminderStyle,
+  });
+  return crypto.createHash('sha256').update(JSON.stringify(config)).digest('hex').slice(0, 16);
 }
 
 function parseLifecycleMetadata(value: string | undefined): Database['lifecycle'] | undefined {

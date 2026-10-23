@@ -26,6 +26,8 @@ database.db
 database.json.*.tmp
 session_handoff.md
 data/
+auth-state.json
+auth-state.json.*.tmp
 backups/*.json
 
 # Editor directories and files

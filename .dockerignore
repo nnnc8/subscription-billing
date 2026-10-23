@@ -10,6 +10,8 @@ database.json.*.tmp
 *.db-shm
 backups
 data
+auth-state.json
+auth-state.json.*.tmp
 *.log
 *.err
 .git

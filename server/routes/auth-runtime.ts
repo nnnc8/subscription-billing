@@ -33,17 +33,26 @@ const callbackQuerySchema = z.object({
 export function createAuthRuntimeRouter(runtime: Runtime): Router {
     const router = Router();
 
-    router.get('/api/health', (_req, res) => {
+    router.get('/api/health', (req, res) => {
         const readiness = runtime.getReadiness();
         const healthy = readiness.status === 'ready';
-        res.status(healthy ? 200 : 503).json({
+        const summary = {
             ok: healthy,
             authConfigured: runtime.isAuthConfigured(),
+            readiness: readiness.status
+        };
+        // The endpoint is public for health checks; failure reasons can name records, so
+        // operational details are only shown to a signed-in operator.
+        if (!runtime.isAuthConfigured() || !verifyRequestSession(runtime, req).ok) {
+            res.status(healthy ? 200 : 503).json(summary);
+            return;
+        }
+        res.status(healthy ? 200 : 503).json({
+            ...summary,
             dataWritable: fs.existsSync(runtime.paths.dataDir)
                 && fs.statSync(runtime.paths.dataDir).isDirectory(),
             host: runtime.config.host,
             port: runtime.config.port,
-            readiness: readiness.status,
             ...(readiness.reason ? { readinessReason: readiness.reason } : {})
         });
     });
@@ -117,6 +126,21 @@ export function createAuthRuntimeRouter(runtime: Runtime): Router {
         parseInput(emptyPayloadSchema, req.body ?? {}, 'Invalid logout payload');
         res.setHeader('Set-Cookie', clearSessionCookie(runtime));
         res.json({ authenticated: false });
+    });
+
+    router.post('/api/auth/logout-all', (req, res) => {
+        parseInput(emptyPayloadSchema, req.body ?? {}, 'Invalid logout payload');
+        if (!runtime.isAuthConfigured()) {
+            res.status(503).json({ error: 'Authentication is not configured' });
+            return;
+        }
+        if (!verifyRequestSession(runtime, req).ok) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+        runtime.revokeAllSessions();
+        res.setHeader('Set-Cookie', clearSessionCookie(runtime));
+        res.json({ authenticated: false, revokedAllSessions: true });
     });
 
     return router;

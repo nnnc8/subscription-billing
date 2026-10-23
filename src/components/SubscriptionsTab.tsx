@@ -32,11 +32,12 @@ export function SubscriptionsTab({ data, apiFetch, refreshData, showToast }: Sub
       const response = await apiFetch('/update-subscriptions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscriptions }),
+        body: JSON.stringify({ subscriptions, baseVersion: data._audit?.configVersion }),
       });
       const result = await response.json() as MutationResponse;
       if (!response.ok) {
         showToast(result.error ?? '更新訂閱名額失敗');
+        if (response.status === 409) await refreshData();
         return false;
       }
       await refreshData();

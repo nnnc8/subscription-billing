@@ -21,6 +21,7 @@ interface SessionResponse {
 
 const API_BASE = '/api';
 const AUTH_REQUIRED = 'AUTH_REQUIRED';
+const BACKGROUND_SYNC_MIN_INTERVAL_MS = 15_000;
 const NAV_ITEMS: ReadonlyArray<{ id: TabId; code: string; label: string }> = [
   { id: 'dashboard', code: '📊', label: '總覽' },
   { id: 'subscriptions', code: '👥', label: '訂閱名額' },
@@ -119,12 +120,49 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [authChecked, authenticated, refreshData]);
 
+  // With several devices signed in, pick up changes made elsewhere when this one comes back
+  // into view. Failures stay silent so a flaky mobile connection keeps the last good data.
+  useEffect(() => {
+    if (!authenticated) return undefined;
+    let lastSyncAt = Date.now();
+    function syncInBackground(): void {
+      if (document.visibilityState !== 'visible' || Date.now() - lastSyncAt < BACKGROUND_SYNC_MIN_INTERVAL_MS) return;
+      lastSyncAt = Date.now();
+      void apiFetch('/data')
+        .then(async (response) => {
+          if (response.ok) setData(await response.json() as Database);
+        })
+        .catch(() => undefined);
+    }
+    document.addEventListener('visibilitychange', syncInBackground);
+    window.addEventListener('focus', syncInBackground);
+    return () => {
+      document.removeEventListener('visibilitychange', syncInBackground);
+      window.removeEventListener('focus', syncInBackground);
+    };
+  }, [authenticated, apiFetch]);
+
   async function handleLogout(): Promise<void> {
     try {
       await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
     } finally {
       markUnauthenticated();
     }
+  }
+
+  async function handleLogoutAll(): Promise<void> {
+    if (!window.confirm('要登出所有裝置嗎？\n\n包含這台在內，所有已登入的手機和電腦都需要重新用 Google 登入。')) return;
+    try {
+      const response = await fetch(`${API_BASE}/auth/logout-all`, { method: 'POST', credentials: 'include' });
+      if (!response.ok && response.status !== 401) {
+        showToast('登出所有裝置失敗，請稍後再試');
+        return;
+      }
+    } catch {
+      showToast('登出所有裝置失敗，請稍後再試');
+      return;
+    }
+    markUnauthenticated();
   }
 
   if (!authChecked) return <div className="auth-shell"><div className="auth-panel"><span className="auth-kicker">Checking session</span><h1>Subscription Billing</h1><p>正在確認登入狀態...</p></div></div>;
@@ -156,7 +194,14 @@ export function App() {
           <div className="rail-card"><span className="rail-card-label">待收金額</span><strong className="rail-card-value">{formatMoney(summary.totalReceivables)}</strong><small className="rail-card-note">{summary.unpaidMembersCount} 位成員未結清</small></div>
           <div className="rail-card"><span className="rail-card-label">最近操作</span><strong className="rail-card-value">{summary.ledger.latest ? formatEventTime(summary.ledger.latest.at) : '尚無紀錄'}</strong><small className="rail-card-note">{summary.ledger.latest?.summary ?? '等待第一筆操作'}</small></div>
         </section>
-        <div className="sidebar-footer"><p>{data.currentMonth} · 單一操作者模式</p>{authUser?.email && <p>{authUser.email}</p>}<button type="button" className="sidebar-logout" onClick={() => void handleLogout()}>登出</button></div>
+        <div className="sidebar-footer">
+          <p className="sidebar-meta">{data.currentMonth} · 單一操作者模式</p>
+          {authUser?.email && <p className="sidebar-account">{authUser.email}</p>}
+          <div className="sidebar-actions">
+            <button type="button" className="sidebar-logout" onClick={() => void handleLogout()}>登出</button>
+            <button type="button" className="sidebar-logout sidebar-logout-all" onClick={() => void handleLogoutAll()}>登出所有裝置</button>
+          </div>
+        </div>
       </aside>
 
       <main className="main-content">

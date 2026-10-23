@@ -68,6 +68,37 @@ export function compareSnapshots(currentSnapshot: Snapshot, targetSnapshot: Snap
     };
 }
 
+const REGULAR_BACKUP_RE = /^database_(\d{8})_\d{6}(?:(?:_\d{3})?_[a-f0-9]{8})?\.db$/;
+
+export type BackupRetentionPolicy = {
+    keepRecent: number;
+    keepDaily: number;
+    keepMonthly: number;
+};
+
+/**
+ * Keeps the newest `keepRecent` backups plus the newest backup of each of the latest
+ * `keepDaily` days and `keepMonthly` months, so a burst of writes cannot rotate away
+ * every snapshot older than an hour. Returns the regular backups that may be deleted.
+ */
+export function selectBackupsToPrune(filenames: string[], policy: BackupRetentionPolicy): string[] {
+    const newestFirst = filenames.filter(filename => REGULAR_BACKUP_RE.test(filename)).sort().reverse();
+    const keep = new Set(newestFirst.slice(0, policy.keepRecent));
+    const keepNewestPerPeriod = (periodOf: (day: string) => string, limit: number): void => {
+        const periods = new Set<string>();
+        for (const filename of newestFirst) {
+            const period = periodOf(REGULAR_BACKUP_RE.exec(filename)![1]!);
+            if (periods.has(period)) continue;
+            if (periods.size >= limit) break;
+            periods.add(period);
+            keep.add(filename);
+        }
+    };
+    keepNewestPerPeriod(day => day, policy.keepDaily);
+    keepNewestPerPeriod(day => day.slice(0, 6), policy.keepMonthly);
+    return newestFirst.filter(filename => !keep.has(filename));
+}
+
 function backupLabel(filename: string): string {
     return filename.match(/database_(\d{8}_\d{6})/)?.[1] || filename;
 }
@@ -115,11 +146,15 @@ export function createBackupService({
     backupDir,
     sqlitePath,
     maxBackups = 50,
+    keepDailyBackups = 30,
+    keepMonthlyBackups = 12,
     onlineBackup = backupSQLite
 }: {
     backupDir: string;
     sqlitePath: string;
     maxBackups?: number;
+    keepDailyBackups?: number;
+    keepMonthlyBackups?: number;
     onlineBackup?: typeof backupSQLite;
 }) {
     function safeBackupPath(filename: string): string {
@@ -234,11 +269,12 @@ export function createBackupService({
             const backupPath = path.join(backupDir, `database_${timestamp}_${crypto.randomUUID().slice(0, 8)}.db`);
             await onlineBackup(sqlitePath, backupPath);
 
-            const files = fs.readdirSync(backupDir)
-                .filter(filename => filename.startsWith('database_') && filename.endsWith('.db'))
-                .sort()
-                .reverse();
-            for (const filename of files.slice(maxBackups)) {
+            const prunable = selectBackupsToPrune(fs.readdirSync(backupDir), {
+                keepRecent: maxBackups,
+                keepDaily: keepDailyBackups,
+                keepMonthly: keepMonthlyBackups
+            });
+            for (const filename of prunable) {
                 fs.unlinkSync(path.join(backupDir, filename));
             }
             return backupPath;
