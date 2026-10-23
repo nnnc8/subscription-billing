@@ -8,17 +8,16 @@ Vercel 提供網頁與 API。Turso 保存 SQLite 相容資料。
 
 ## 目前驗證狀態
 
-- 已完成：本機資料庫、搬資料與標頭測試。
-- 已完成：TypeScript、Promise 檢查與 Vite 建置。
-- 未驗證：本專案的 Vercel function 建置與執行。
-- 未驗證：完整 HTTP 測試與 `turso dev` 測試。
+- 已完成：`pnpm run verify`。結果：146 過、1 跳過。
+- 已完成：`turso dev` 上的 `pnpm run test:libsql`。結果：143 過、4 跳過。
+- 已完成：`pnpm run build:vercel:offline`。輸出只有 Vite 素材與 function。
+- 已完成：`pnpm run smoke:vercel`。組好的 function 連 `turso dev` 執行。
 - 未驗證：Docker 容器。`bash -n` 已通過。
 - 未驗證：正式網址、Google 登入與雲端資料搬移。
 
-本輪沙箱拒絕監聽本機連接埠。
-Vercel CLI 的快取鎖也位於唯讀目錄。
-原聊天須先執行本文的本機驗收。
-本輪沒有建立雲端資源或讀取正式資料。
+以上驗收都在本機執行，使用假資料。
+我沒有建立正式的 Turso 資料庫或 Vercel 專案。
+我沒有讀取正式資料。
 
 ## 先準備帳號與區域
 
