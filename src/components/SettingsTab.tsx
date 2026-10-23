@@ -191,11 +191,20 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
       const response = await apiFetch('/update-config-bundle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ platforms: editedPlatforms, members: editedMembers, bankInfo, reminderStyle }),
+        body: JSON.stringify({
+          platforms: editedPlatforms,
+          members: editedMembers,
+          bankInfo,
+          reminderStyle,
+          baseVersion: data._audit?.configVersion,
+        }),
       });
       const result = await response.json() as ApiResult;
       if (!response.ok) {
         showToast(result.error ?? '儲存設定失敗');
+        // Another device changed the settings: reload them. Drafts are keyed by id, so the
+        // operator's unsaved edits stay on screen and can be reviewed and saved again.
+        if (response.status === 409) await refreshData();
         return;
       }
       clearDrafts();
@@ -387,6 +396,8 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
             {backupOpen && <div className="recovery-body">
               {recoveryStatus && <div className={`recovery-current ${snapshotTone(recoveryStatus)}`}><div><span>目前狀態</span><strong>{recoveryStatus.currentMonth} · {recoveryStatus.health.label}</strong><small>{recoveryStatus.health.warningCount} 個提醒</small></div><div><span>待收</span><strong>{formatMoney(recoveryStatus.totals.receivable)}</strong><small>{recoveryStatus.totals.unpaidMembers} 人未結清</small></div><div><span>指紋</span><code>{recoveryStatus.fingerprint.slice(0, 12)}</code><small>{recoveryStatus.counts.ledger} 筆事件</small></div></div>}
               <button type="button" className="btn btn-secondary recovery-create" onClick={() => void createBackup()} disabled={backupLoading}>{backupLoading ? '處理中...' : '建立目前狀態備份'}</button>
+              {/* Server backups share the database's disk; a periodic download is the off-site copy. */}
+              <a className="btn btn-secondary recovery-create recovery-download" href="/api/export-json" download>下載完整資料（JSON）到這台裝置</a>
               {backups.length === 0 ? <p className="recovery-empty">暫無備份記錄</p> : <div className="recovery-list">{backups.map((backup) => <div key={backup.filename} className={`recovery-item ${snapshotTone(backup.snapshot)}`}><div className="recovery-item-main"><div className="recovery-item-title"><span>{formatBackupTimestamp(backup)}</span><strong>{backup.readable ? backup.snapshot?.health.label : '無法讀取'}</strong></div><div className="recovery-item-meta"><span>{backup.readable ? `${backup.snapshot?.currentMonth} 帳期` : backup.error}</span><span>{(backup.size / 1024).toFixed(1)} KB</span></div><p>{backup.restoreImpact.summary}</p></div><div className="recovery-actions"><button type="button" className="btn btn-success" onClick={() => setSelectedBackup(backup)} disabled={backupLoading || !backup.readable}>還原</button><button type="button" className="btn btn-danger btn-icon-only" aria-label={`刪除備份 ${backup.filename}`} onClick={() => void deleteBackup(backup.filename)} disabled={backupLoading}>×</button></div></div>)}</div>}
             </div>}
           </section>

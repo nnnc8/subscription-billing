@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { getSystemSnapshot, previousMonthString } from '../lib/accounting.js';
+import { getSystemSnapshot, monthToCode } from '../lib/accounting.js';
 import { backupSQLite } from '../lib/db.js';
 import {
     SESSION_COOKIE_NAME,
@@ -119,7 +119,7 @@ describe('server composition and route parity', () => {
         expect(fs.existsSync(dataDir)).toBe(false);
     });
 
-    it('preserves all 38 API method/path pairs', () => {
+    it('preserves all 39 API method/path pairs', () => {
         const runtime = createRuntime({ rootDir, env: { NODE_ENV: 'test' } });
         expect(routeInventory(runtime)).toEqual([
             'DELETE /api/backups/:filename',
@@ -145,6 +145,7 @@ describe('server composition and route parity', () => {
             'POST /api/ai/generate-reminder',
             'POST /api/ai/rag-search',
             'POST /api/auth/logout',
+            'POST /api/auth/logout-all',
             'POST /api/automation/confirm/:id',
             'POST /api/automation/ingest',
             'POST /api/automation/reject/:id',
@@ -272,10 +273,9 @@ describe('native fetch integration across route groups', () => {
     it('never returns an unpersisted lifecycle catch-up state after a write failure', async () => {
         const runtime = createTestRuntime({ NODE_ENV: 'development' });
         const persisted = runtime.readDB()!;
-        persisted.currentMonth = previousMonthString(getSystemMonth())!;
-        await runtime.mutateDB(db => {
-            db.currentMonth = persisted.currentMonth;
-        });
+        // The fixture is pinned to 2026/06, so any later wall-clock month forces a catch-up.
+        // (Moving currentMonth forward instead left fixture payments in a mismatched cycle.)
+        expect(monthToCode(persisted.currentMonth)!).toBeLessThan(monthToCode(getSystemMonth())!);
 
         await withApp(runtime, async (baseUrl, cookie) => {
             const response = await fetch(`${baseUrl}/api/data`, { headers: { Cookie: cookie } });

@@ -6,7 +6,7 @@ import {
     SESSION_MAX_AGE_SECONDS,
     verifySessionCookieValue,
 } from '../../lib/auth.js';
-import { resolveGoogleRedirectUri } from '../../lib/google-oauth.js';
+import { getGoogleOAuthConfig, resolveGoogleRedirectUri } from '../../lib/google-oauth.js';
 import type { SessionCookiePayload } from '../../src/types/billing.js';
 import { httpError } from './error.js';
 import type { Runtime } from '../runtime.js';
@@ -75,7 +75,19 @@ export function clearOAuthStateCookie(runtime: Runtime): string {
 
 export function verifyRequestSession(runtime: Runtime, req: Request): ReturnType<typeof verifySessionCookieValue> {
     const value = parseCookies(req)[SESSION_COOKIE_NAME];
-    return verifySessionCookieValue(value || '', { secret: runtime.env.APP_SESSION_SECRET || '' });
+    const result = verifySessionCookieValue(value || '', { secret: runtime.env.APP_SESSION_SECRET || '' });
+    if (!result.ok || !result.session) return result;
+
+    // A valid signature is not enough: removing an email from the allowlist or signing out
+    // every device must lock out cookies that were issued earlier.
+    const email = result.session.user?.email || '';
+    if (!getGoogleOAuthConfig(runtime.env).allowedEmails.has(email)) {
+        return { ok: false, reason: 'not-allowed' };
+    }
+    if (!(result.session.iat >= runtime.sessionsRevokedBefore())) {
+        return { ok: false, reason: 'revoked' };
+    }
+    return result;
 }
 
 export function getGoogleRedirectUri(runtime: Runtime, _req: Request): string {

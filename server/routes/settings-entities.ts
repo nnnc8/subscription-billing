@@ -11,6 +11,7 @@ import { httpError } from '../middleware/error.js';
 import { nonEmptyIdSchema, parseInput } from '../middleware/validation.js';
 import type { Runtime } from '../runtime.js';
 import {
+    assertConfigVersion,
     generateId,
     mutateAndSend,
     parseMoney,
@@ -41,18 +42,31 @@ const subscriptionSchema = z.object({
     seatLabel: z.string().max(200).optional(),
     allowDuplicate: z.boolean().optional()
 }).passthrough();
-const updatePlatformsSchema = z.object({ platforms: z.array(platformDraftSchema).max(10_000) });
-const updateMembersSchema = z.object({ members: z.array(memberDraftSchema).max(10_000) });
-const updateSubscriptionsSchema = z.object({ subscriptions: z.array(subscriptionSchema).max(50_000) });
+// Optional so older clients keep working; the web UI always sends it.
+const baseVersionSchema = z.string().trim().min(1).max(128).optional();
+const updatePlatformsSchema = z.object({
+    platforms: z.array(platformDraftSchema).max(10_000),
+    baseVersion: baseVersionSchema
+});
+const updateMembersSchema = z.object({
+    members: z.array(memberDraftSchema).max(10_000),
+    baseVersion: baseVersionSchema
+});
+const updateSubscriptionsSchema = z.object({
+    subscriptions: z.array(subscriptionSchema).max(50_000),
+    baseVersion: baseVersionSchema
+});
 const updateBankSchema = z.object({
     bankInfo: z.string().max(20_000).optional(),
-    reminderStyle: z.string().max(100).optional()
+    reminderStyle: z.string().max(100).optional(),
+    baseVersion: baseVersionSchema
 });
 const configBundleSchema = z.object({
     platforms: z.array(platformDraftSchema).max(10_000),
     members: z.array(memberDraftSchema).max(10_000),
     bankInfo: z.string().max(20_000).optional(),
-    reminderStyle: z.string().max(100).optional()
+    reminderStyle: z.string().max(100).optional(),
+    baseVersion: baseVersionSchema
 });
 const createMemberSchema = z.object({
     name: z.string().trim().min(1).max(200),
@@ -148,9 +162,10 @@ export function createSettingsEntitiesRouter(runtime: Runtime): Router {
     const router = Router();
 
     router.post('/api/update-prices', async (req, res) => {
-        const { platforms } = parseInput(updatePlatformsSchema, req.body, 'Invalid platforms data');
+        const { platforms, baseVersion } = parseInput(updatePlatformsSchema, req.body, 'Invalid platforms data');
         const nextPlatforms = platforms.map(normalizePlatformDraft) as unknown as Platform[];
         await mutateAndSend(runtime, res, db => {
+            assertConfigVersion(db, baseVersion);
             db.platforms = nextPlatforms;
             return {
                 event: {
@@ -164,9 +179,10 @@ export function createSettingsEntitiesRouter(runtime: Runtime): Router {
     });
 
     router.post('/api/update-members', async (req, res) => {
-        const { members } = parseInput(updateMembersSchema, req.body, 'Invalid members data');
+        const { members, baseVersion } = parseInput(updateMembersSchema, req.body, 'Invalid members data');
         const nextMembers = members.map(normalizeMemberDraft) as unknown as Member[];
         await mutateAndSend(runtime, res, db => {
+            assertConfigVersion(db, baseVersion);
             db.members = nextMembers;
             return {
                 event: {
@@ -180,9 +196,10 @@ export function createSettingsEntitiesRouter(runtime: Runtime): Router {
     });
 
     router.post('/api/update-subscriptions', async (req, res) => {
-        const { subscriptions } = parseInput(updateSubscriptionsSchema, req.body, 'Invalid subscriptions data');
+        const { subscriptions, baseVersion } = parseInput(updateSubscriptionsSchema, req.body, 'Invalid subscriptions data');
         const nextSubscriptions = subscriptions as unknown as Subscription[];
         await mutateAndSend(runtime, res, db => {
+            assertConfigVersion(db, baseVersion);
             db.subscriptions = nextSubscriptions;
             return {
                 event: {
@@ -198,6 +215,7 @@ export function createSettingsEntitiesRouter(runtime: Runtime): Router {
     router.post('/api/update-bank', async (req, res) => {
         const input = parseInput(updateBankSchema, req.body, 'Invalid settings data');
         await mutateAndSend(runtime, res, db => {
+            assertConfigVersion(db, input.baseVersion);
             db.bankInfo = input.bankInfo || '';
             db.reminderStyle = input.reminderStyle || 'friendly';
             return {
@@ -218,6 +236,7 @@ export function createSettingsEntitiesRouter(runtime: Runtime): Router {
         const bankInfo = input.bankInfo || '';
         const reminderStyle = input.reminderStyle || 'friendly';
         await mutateAndSend(runtime, res, db => {
+            assertConfigVersion(db, input.baseVersion);
             const summary = summarizeSettingsBundle(db, platforms, members, bankInfo, reminderStyle);
             if (!summary.totalChanges) {
                 return { extra: { message: '沒有設定異動，已重新同步畫面。' } };

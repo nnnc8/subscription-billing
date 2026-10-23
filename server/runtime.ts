@@ -19,6 +19,7 @@ import { runLifecycleCatchUp } from '../lib/lifecycle.js';
 import { invalidateRAGIndex } from '../lib/rag.js';
 import type { AutomationProposal, Database } from '../src/types/billing.js';
 import { createBackupService } from './services/backup.js';
+import { createSessionRevocationStore } from './services/session-revocation.js';
 
 const DEFAULT_ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -201,6 +202,7 @@ export function createRuntime(options: RuntimeOptions = {}) {
     const demoDbPath = path.resolve(options.demoDbPath || path.join(rootDir, 'fixtures', 'demo-database.json'));
     const distDir = path.resolve(options.distDir || path.join(rootDir, 'dist'));
     const migrationsDir = path.resolve(options.migrationsDir || path.join(rootDir, 'lib', 'migrations'));
+    const authStatePath = path.join(dataDir, 'auth-state.json');
     const onlineBackup = options.onlineBackup || backupSQLite;
     const isProduction = env.NODE_ENV === 'production';
     const config = {
@@ -212,7 +214,7 @@ export function createRuntime(options: RuntimeOptions = {}) {
             : ['1', 'true', 'yes'].includes(String(env.COOKIE_SECURE).toLowerCase()),
         maxBackups: 50
     };
-    const paths = { rootDir, dataDir, dbPath, sqlitePath, backupDir, demoDbPath, distDir };
+    const paths = { rootDir, dataDir, dbPath, sqlitePath, backupDir, demoDbPath, distDir, authStatePath };
     const automationInbox: AutomationProposal[] = [];
     const backup = createBackupService({
         backupDir,
@@ -220,6 +222,7 @@ export function createRuntime(options: RuntimeOptions = {}) {
         maxBackups: config.maxBackups,
         onlineBackup
     });
+    const sessionRevocation = createSessionRevocationStore(authStatePath);
     const mutationQueue: Array<QueueJob<unknown>> = [];
     let mutationWorkerRunning = false;
     let readiness: RuntimeReadiness = { status: 'starting' };
@@ -513,6 +516,7 @@ export function createRuntime(options: RuntimeOptions = {}) {
         isAuthConfigured,
         isCloudBinding,
         invalidateRAGIndex,
+        ...sessionRevocation,
         ...backup
     };
 }
