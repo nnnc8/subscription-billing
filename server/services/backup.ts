@@ -1,14 +1,7 @@
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
-import SqliteDatabase from 'better-sqlite3';
-import { appendLedgerEvent, findAccountingWarnings, getSystemSnapshot } from '../../lib/accounting.js';
-import {
-    backupSQLite,
-    getCanonicalPersistedFingerprint,
-    loadFromSQLite,
-    saveToSQLite
-} from '../../lib/db.js';
+import type { Client, Transaction, Row } from '@libsql/client';
+import { appendLedgerEvent, findAccountingWarnings, getSystemSnapshot, normalizeDatabaseRelations } from '../../lib/accounting.js';
+import { getCanonicalPersistedFingerprint, loadFromConnection, withWriteTransaction, writeDatabase, verifyDatabase } from '../../lib/db.js';
 import type { Database, LedgerEvent } from '../../src/types/billing.js';
 import { httpError } from '../middleware/error.js';
 
@@ -103,239 +96,100 @@ function backupLabel(filename: string): string {
     return filename.match(/database_(\d{8}_\d{6})/)?.[1] || filename;
 }
 
-function removeSqliteFiles(sqlitePath: string): void {
-    for (const suffix of ['', '-wal', '-shm']) {
-        fs.rmSync(`${sqlitePath}${suffix}`, { force: true });
-    }
+export function assertBackupId(filename: string): void {
+    if (!REGULAR_BACKUP_RE.test(filename)) throw httpError(400, '備份檔名格式不合法');
 }
 
-function renameSqliteFiles(sourcePath: string, targetPath: string): void {
-    for (const suffix of ['', '-wal', '-shm']) {
-        const source = `${sourcePath}${suffix}`;
-        if (fs.existsSync(source)) fs.renameSync(source, `${targetPath}${suffix}`);
-    }
-}
-
-function verifySqlite(sqlitePath: string, expectedFingerprint?: string): Database {
-    const sqlite = new SqliteDatabase(sqlitePath, { fileMustExist: true });
+function decodeBackup(row: Row): Database {
     try {
-        if (sqlite.pragma('integrity_check', { simple: true }) !== 'ok') {
-            throw new Error('SQLite integrity check failed');
-        }
-    } finally {
-        sqlite.close();
-    }
-    const db = loadFromSQLite(sqlitePath);
-    if (expectedFingerprint && getCanonicalPersistedFingerprint(db) !== expectedFingerprint) {
-        throw new Error('SQLite fingerprint verification failed');
-    }
-    return db;
+        const db = normalizeDatabaseRelations(JSON.parse(String(row.snapshot_json)));
+        if (getCanonicalPersistedFingerprint(db) !== row.fingerprint) throw new Error('Fingerprint mismatch');
+        if (Buffer.byteLength(String(row.snapshot_json), 'utf8') !== Number(row.size)) throw new Error('Size mismatch');
+        const warnings = findAccountingWarnings(db).filter(w => w.severity === 'high' || w.severity === 'critical');
+        if (warnings.length) throw new Error('Domain integrity failed');
+        return db;
+    } catch { throw httpError(400, '備份檔案無效或已損毀'); }
 }
 
-function assertDomainIntegrity(db: Database): void {
-    const blockingWarnings = findAccountingWarnings(db)
-        .filter(warning => warning.severity === 'high' || warning.severity === 'critical');
-    if (blockingWarnings.length) {
-        throw new Error(
-            blockingWarnings.slice(0, 3).map(warning => `${warning.code}: ${warning.detail}`).join('; ')
-        );
-    }
-}
-
-export function createBackupService({
-    backupDir,
-    sqlitePath,
-    maxBackups = 50,
-    keepDailyBackups = 30,
-    keepMonthlyBackups = 12,
-    onlineBackup = backupSQLite
-}: {
-    backupDir: string;
-    sqlitePath: string;
-    maxBackups?: number;
-    keepDailyBackups?: number;
-    keepMonthlyBackups?: number;
-    onlineBackup?: typeof backupSQLite;
+export function createBackupService({ client, maxBackups = 50, keepDailyBackups = 30, keepMonthlyBackups = 12 }: {
+    client: Client; maxBackups?: number; keepDailyBackups?: number; keepMonthlyBackups?: number;
 }) {
-    function safeBackupPath(filename: string): string {
-        if (!/^database_\d{8}_\d{6}(?:(?:_\d{3})?_[a-f0-9]{8})?\.db$/.test(filename)) {
-            throw httpError(400, '備份檔名格式不合法');
+    async function insertBackup(tx: Transaction, data: Database, reason: string, keepIds: string[] = []): Promise<string> {
+        const now = new Date();
+        const parts = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+        }).formatToParts(now);
+        const part = (name: Intl.DateTimeFormatPartTypes) => parts.find(p => p.type === name)!.value;
+        const timestamp = `${part('year')}${part('month')}${part('day')}_${part('hour')}${part('minute')}${part('second')}_${String(now.getMilliseconds()).padStart(3, '0')}`;
+        const id = `database_${timestamp}_${crypto.randomUUID().slice(0, 8)}.db`;
+        const json = JSON.stringify(data);
+        await tx.execute({
+            sql: 'INSERT INTO backups (id,created_at,reason,fingerprint,size,snapshot_json) VALUES (?,?,?,?,?,?)',
+            args: [id, now.toISOString(), reason, getCanonicalPersistedFingerprint(data), Buffer.byteLength(json, 'utf8'), json]
+        });
+        const ids = (await tx.execute('SELECT id FROM backups')).rows.map(row => String(row.id));
+        for (const removed of selectBackupsToPrune(ids, { keepRecent: maxBackups, keepDaily: keepDailyBackups, keepMonthly: keepMonthlyBackups })) {
+            if (keepIds.includes(removed)) continue;
+            await tx.execute({ sql: 'DELETE FROM backups WHERE id=?', args: [removed] });
         }
-        const resolved = path.resolve(backupDir, filename);
-        if (!resolved.startsWith(`${path.resolve(backupDir)}${path.sep}`)) {
-            throw httpError(400, '備份路徑不合法');
-        }
-        return resolved;
+        return id;
     }
-
-    function validateBackupDatabase(backupPath: string): Database {
-        try {
-            const sqlite = new SqliteDatabase(backupPath, { readonly: true, fileMustExist: true });
-            try {
-                if (sqlite.pragma('integrity_check', { simple: true }) !== 'ok') {
-                    throw new Error('SQLite integrity check failed');
-                }
-            } finally {
-                sqlite.close();
+    async function backupDB(reason = 'manual', recordEvent = false): Promise<string> {
+        return withWriteTransaction(client, async tx => {
+            const previous = await loadFromConnection(tx);
+            const id = await insertBackup(tx, previous, reason);
+            if (recordEvent) {
+                const next = structuredClone(previous);
+                appendLedgerEvent(next, { type: 'backup.created', summary: `建立手動備份 ${id}`, entityType: 'backup', entityId: id, payload: { filename: id } });
+                await writeDatabase(tx, previous, next);
+                await verifyDatabase(tx, next);
             }
-            const db = loadFromSQLite(backupPath);
-            assertDomainIntegrity(db);
-            return db;
+            return id;
+        });
+    }
+    async function getBackup(filename: string, db: Client | Transaction = client): Promise<Row> {
+        assertBackupId(filename);
+        const row = (await db.execute({ sql: 'SELECT * FROM backups WHERE id=?', args: [filename] })).rows[0];
+        if (!row) throw httpError(404, '備份檔案不存在');
+        return row;
+    }
+    async function validateBackupDatabase(filename: string): Promise<Database> {
+        return decodeBackup(await getBackup(filename));
+    }
+    async function restoreSQLiteFromBackup(filename: string, event: Partial<LedgerEvent> & { type: string }): Promise<Database> {
+        return withWriteTransaction(client, async tx => {
+            const target = decodeBackup(await getBackup(filename, tx));
+            const previous = await loadFromConnection(tx);
+            // The backup being restored must survive the safety snapshot's pruning.
+            await insertBackup(tx, previous, 'restore.safety', [filename]);
+            appendLedgerEvent(target, event);
+            await writeDatabase(tx, previous, target);
+            await verifyDatabase(tx, target);
+            return target;
+        });
+    }
+    async function deleteBackup(tx: Transaction, filename: string): Promise<void> {
+        await getBackup(filename, tx);
+        await tx.execute({ sql: 'DELETE FROM backups WHERE id=?', args: [filename] });
+    }
+    function analyzeRow(row: Row, currentSnapshot: Snapshot): Snapshot {
+        const filename = String(row.id);
+        const base = { filename, label: backupLabel(filename), size: Number(row.size), mtime: String(row.created_at), reason: String(row.reason) };
+        try {
+            const snapshot = getSystemSnapshot(decodeBackup(row)) as unknown as Snapshot;
+            return { ...base, readable: true, snapshot, restoreImpact: compareSnapshots(currentSnapshot, snapshot) };
         } catch {
-            throw httpError(400, '備份檔案無效或已損毀');
+            return { ...base, readable: false, error: '備份內容無法讀取', restoreImpact: { sameBusinessState: false, changeCount: 0, summary: '備份內容無法讀取', changes: [] } };
         }
     }
-
-    async function restoreSQLiteFromBackup(
-        backupPath: string,
-        restoreEvent: Partial<LedgerEvent> & { type: string }
-    ): Promise<Database> {
-        const stagePath = path.join(path.dirname(sqlitePath), `.restore-stage-${crypto.randomUUID()}.db`);
-        const safetyPath = path.join(backupDir, `.restore-safety-${crypto.randomUUID()}.db`);
-        let safetyVerified = false;
-        let committed = false;
-        removeSqliteFiles(stagePath);
-        removeSqliteFiles(safetyPath);
-        try {
-            await onlineBackup(backupPath, stagePath);
-            const stagedDb = verifySqlite(stagePath);
-            assertDomainIntegrity(stagedDb);
-            appendLedgerEvent(stagedDb, restoreEvent);
-            saveToSQLite(stagePath, stagedDb);
-            const expectedFingerprint = getCanonicalPersistedFingerprint(stagedDb);
-            verifySqlite(stagePath, expectedFingerprint);
-
-            await onlineBackup(sqlitePath, safetyPath);
-            verifySqlite(safetyPath);
-            safetyVerified = true;
-
-            await onlineBackup(stagePath, sqlitePath);
-            const restoredDb = verifySqlite(sqlitePath, expectedFingerprint);
-            committed = true;
-            removeSqliteFiles(safetyPath);
-            return restoredDb;
-        } catch (error) {
-            if (safetyVerified) {
-                try {
-                    const safetyFingerprint = getCanonicalPersistedFingerprint(loadFromSQLite(safetyPath));
-                    await onlineBackup(safetyPath, sqlitePath);
-                    verifySqlite(sqlitePath, safetyFingerprint);
-                    removeSqliteFiles(safetyPath);
-                } catch (rollbackError) {
-                    throw new Error(
-                        `Restore failed and rollback failed: ${String(error)}; ${String(rollbackError)}`,
-                        { cause: rollbackError }
-                    );
-                }
-            }
-            throw error;
-        } finally {
-            removeSqliteFiles(stagePath);
-            if (committed) removeSqliteFiles(safetyPath);
-        }
+    async function analyzeBackupFile(filename: string, currentSnapshot: Snapshot = {}): Promise<Snapshot> {
+        return analyzeRow(await getBackup(filename), currentSnapshot);
     }
-
-    function moveBackupToTombstone(filename: string): string {
-        const backupPath = safeBackupPath(filename);
-        if (!fs.existsSync(backupPath)) throw httpError(404, '備份檔案不存在');
-        const tombstoneFilename = `.backup-tombstone-${filename}-${crypto.randomUUID()}.db`;
-        const tombstonePath = path.join(backupDir, tombstoneFilename);
-        renameSqliteFiles(backupPath, tombstonePath);
-        return tombstonePath;
-    }
-
-    function restoreBackupTombstone(tombstonePath: string, filename: string): void {
-        renameSqliteFiles(tombstonePath, safeBackupPath(filename));
-    }
-
-    function removeBackupTombstone(tombstonePath: string): void {
-        removeSqliteFiles(tombstonePath);
-    }
-
-    async function backupDB(): Promise<string | null> {
-        try {
-            const now = new Date();
-            const timestamp = [
-                now.getFullYear(),
-                String(now.getMonth() + 1).padStart(2, '0'),
-                String(now.getDate()).padStart(2, '0'),
-                '_',
-                String(now.getHours()).padStart(2, '0'),
-                String(now.getMinutes()).padStart(2, '0'),
-                String(now.getSeconds()).padStart(2, '0'),
-                '_',
-                String(now.getMilliseconds()).padStart(3, '0')
-            ].join('');
-            const backupPath = path.join(backupDir, `database_${timestamp}_${crypto.randomUUID().slice(0, 8)}.db`);
-            await onlineBackup(sqlitePath, backupPath);
-
-            const prunable = selectBackupsToPrune(fs.readdirSync(backupDir), {
-                keepRecent: maxBackups,
-                keepDaily: keepDailyBackups,
-                keepMonthly: keepMonthlyBackups
-            });
-            for (const filename of prunable) {
-                fs.unlinkSync(path.join(backupDir, filename));
-            }
-            return backupPath;
-        } catch (error) {
-            console.error('Backup failed:', error);
-            return null;
-        }
-    }
-
-    function analyzeBackupFile(filename: string, currentSnapshot: Snapshot | null = null): Snapshot {
-        const backupPath = safeBackupPath(filename);
-        const stats = fs.statSync(backupPath);
-        const base = {
-            filename,
-            label: backupLabel(filename),
-            size: stats.size,
-            mtime: stats.mtime.toISOString()
-        };
-
-        try {
-            const snapshot = getSystemSnapshot(loadFromSQLite(backupPath)) as unknown as Snapshot;
-            return {
-                ...base,
-                readable: true,
-                snapshot,
-                restoreImpact: compareSnapshots(currentSnapshot || {}, snapshot)
-            };
-        } catch (error) {
-            return {
-                ...base,
-                readable: false,
-                error: (error as Error).message || '備份內容無法讀取',
-                restoreImpact: {
-                    sameBusinessState: false,
-                    changeCount: 0,
-                    summary: '備份內容無法讀取',
-                    changes: []
-                }
-            };
-        }
-    }
-
-    function listBackupInventory(currentDb: Database): Snapshot {
+    async function listBackupInventory(currentDb: Database): Promise<Snapshot> {
         const current = getSystemSnapshot(currentDb) as unknown as Snapshot;
-        const backups = fs.readdirSync(backupDir)
-            .filter(filename => filename.startsWith('database_') && filename.endsWith('.db'))
-            .sort()
-            .reverse()
-            .map(filename => analyzeBackupFile(filename, current));
-        return { current, backups };
+        const rows = (await client.execute('SELECT * FROM backups ORDER BY id DESC')).rows;
+        return { current, backups: rows.map(row => analyzeRow(row, current)) };
     }
-
-    return {
-        safeBackupPath,
-        validateBackupDatabase,
-        restoreSQLiteFromBackup,
-        moveBackupToTombstone,
-        restoreBackupTombstone,
-        removeBackupTombstone,
-        backupDB,
-        analyzeBackupFile,
-        listBackupInventory
-    };
+    return { insertBackup, backupDB, validateBackupDatabase, restoreSQLiteFromBackup, deleteBackup, analyzeBackupFile, listBackupInventory };
 }

@@ -3,7 +3,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { loadLocalEnv } = require('../lib/env');
 const { isGoogleOAuthConfigured } = require('../lib/google-oauth');
-const { loadFromSQLite } = require('../lib/db');
+const { loadFromSQLite, openDatabase } = require('../lib/db');
 
 const {
     findAccountingWarnings,
@@ -72,10 +72,21 @@ function checkDataDir() {
     }
 }
 
-function readDatabase() {
+async function readDatabase() {
+    if (process.env.TURSO_DATABASE_URL) {
+        const client = openDatabase(process.env.TURSO_DATABASE_URL, process.env.TURSO_AUTH_TOKEN);
+        try {
+            const db = await loadFromSQLite(client);
+            addCheck('pass', 'Database readable', `Turso: ${db.currentMonth}; ${db.members.length} members`);
+            return db;
+        } catch {
+            addCheck('fail', 'Database readable', 'Turso connection or schema check failed');
+            return null;
+        } finally { client.close(); }
+    }
     if (fs.existsSync(sqlitePath) && fs.statSync(sqlitePath).size > 0) {
         try {
-            const db = loadFromSQLite(sqlitePath);
+            const db = await loadFromSQLite(sqlitePath);
             addCheck('pass', 'Database readable', `SQLite database: ${db.currentMonth}; ${db.members.length} members`);
             return db;
         } catch (err) {
@@ -221,11 +232,11 @@ async function main() {
     checkNodeVersion();
     checkDependencies();
     checkBuild();
-    checkDataDir();
+    if (!process.env.TURSO_DATABASE_URL) checkDataDir();
     checkAuthEnv();
     checkHostBinding();
     checkTrackedSensitiveFiles();
-    const db = readDatabase();
+    const db = await readDatabase();
     checkAccounting(db);
     await checkLocalService();
     printResults();

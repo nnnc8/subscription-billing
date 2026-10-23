@@ -1,4 +1,5 @@
-import type { Database as SqliteDatabase } from 'better-sqlite3';
+import type { InStatement } from '@libsql/client';
+import { rowChanges, type SqlRow } from './shared.js';
 import type { Payment } from '../../src/types/billing.js';
 
 export interface PaymentRow {
@@ -19,8 +20,9 @@ export interface PaymentRow {
 }
 
 export class PaymentRepository {
-  static findAll(db: SqliteDatabase): Payment[] {
-    const rows = db.prepare('SELECT * FROM payments').all() as PaymentRow[];
+  static readonly select = 'SELECT * FROM payments';
+
+  static decode(rows: PaymentRow[]): Payment[] {
     return rows.map(row => ({
       id: row.id,
       memberId: row.memberId,
@@ -39,28 +41,8 @@ export class PaymentRepository {
     }));
   }
 
-  static saveAll(db: SqliteDatabase, payments: Payment[]): void {
-    const insertStmt = db.prepare(`
-      INSERT INTO payments (id, memberId, memberName, date, amount, method, cycle, note, createdAt, recordedAt, status, voidedAt, voidedBy, voidReason)
-      VALUES (@id, @memberId, @memberName, @date, @amount, @method, @cycle, @note, @createdAt, @recordedAt, @status, @voidedAt, @voidedBy, @voidReason)
-      ON CONFLICT(id) DO UPDATE SET
-        memberId = excluded.memberId,
-        memberName = excluded.memberName,
-        date = excluded.date,
-        amount = excluded.amount,
-        method = excluded.method,
-        cycle = excluded.cycle,
-        note = excluded.note,
-        createdAt = excluded.createdAt,
-        recordedAt = excluded.recordedAt,
-        status = excluded.status,
-        voidedAt = excluded.voidedAt,
-        voidedBy = excluded.voidedBy,
-        voidReason = excluded.voidReason
-    `);
-
-    for (const p of payments) {
-      insertStmt.run({
+  static encode(payments: Payment[]): SqlRow[] {
+    return payments.map(p => ({
         id: p.id,
         memberId: p.memberId,
         memberName: p.memberName,
@@ -75,15 +57,10 @@ export class PaymentRepository {
         voidedAt: p.voidedAt || null,
         voidedBy: p.voidedBy || null,
         voidReason: p.voidReason || null
-      });
-    }
+      }));
+  }
 
-    const ids = payments.map(p => p.id);
-    if (ids.length > 0) {
-      const placeholders = ids.map(() => '?').join(',');
-      db.prepare(`DELETE FROM payments WHERE id NOT IN (${placeholders})`).run(ids);
-    } else {
-      db.prepare('DELETE FROM payments').run();
-    }
+  static changes(previous: Payment[], next: Payment[]): InStatement[] {
+    return rowChanges('payments', 'id', this.encode(previous), this.encode(next));
   }
 }

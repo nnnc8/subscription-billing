@@ -11,6 +11,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+.vercel
+coverage
 *.local
 .env
 .env.*

@@ -87,12 +87,12 @@ export function createLifecycleAuditRouter(runtime: Runtime): Router {
         }
     });
 
-    router.get('/api/close-preview', (_req, res) => {
-        res.json({ success: true, preview: getClosePreview(readDatabase(runtime)) });
+    router.get('/api/close-preview', async (_req, res) => {
+        res.json({ success: true, preview: getClosePreview(await readDatabase(runtime)) });
     });
 
-    router.get('/api/audit', (_req, res) => {
-        const db = readDatabase(runtime);
+    router.get('/api/audit', async (_req, res) => {
+        const db = await readDatabase(runtime);
         res.json({
             success: true,
             generatedAt: new Date().toISOString(),
@@ -101,12 +101,12 @@ export function createLifecycleAuditRouter(runtime: Runtime): Router {
         });
     });
 
-    router.get('/api/lifecycle/status', (_req, res) => {
-        res.json({ success: true, ...getLifecycleStatus(readDatabase(runtime)) });
+    router.get('/api/lifecycle/status', async (_req, res) => {
+        res.json({ success: true, ...getLifecycleStatus(await readDatabase(runtime)) });
     });
 
-    router.get('/api/ledger', (_req, res) => {
-        res.json({ success: true, ledger: getLedgerSummary(readDatabase(runtime)) });
+    router.get('/api/ledger', async (_req, res) => {
+        res.json({ success: true, ledger: getLedgerSummary(await readDatabase(runtime)) });
     });
 
     return router;

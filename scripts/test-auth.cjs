@@ -4,6 +4,9 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
+const { once } = require('node:events');
+const { resetTestDatabase } = require('./test-database');
+const { openDatabase, getCanonicalPersistedFingerprint } = require('../lib/db');
 
 const {
     OAUTH_STATE_COOKIE_NAME,
@@ -75,7 +78,8 @@ function createFakeGoogleServer() {
         res.end();
     });
 
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
+        server.once('error', reject);
         server.listen(0, '127.0.0.1', () => {
             const { port } = server.address();
             resolve({
@@ -126,7 +130,11 @@ async function withServer(fakeGoogle, fn) {
             GOOGLE_OAUTH_AUTH_URL: `${fakeGoogle.baseUrl}/oauth2/v2/auth`,
             GOOGLE_OAUTH_TOKEN_URL: `${fakeGoogle.baseUrl}/token`,
             GOOGLE_OAUTH_USERINFO_URL: `${fakeGoogle.baseUrl}/userinfo`,
-            NODE_ENV: 'test'
+            NODE_ENV: 'test',
+            COOKIE_SECURE: 'false',
+            PUBLIC_ORIGIN: `http://127.0.0.1:${port}`,
+            TURSO_DATABASE_URL: process.env.TEST_LIBSQL_URL || '',
+            TURSO_AUTH_TOKEN: ''
         },
         stdio: ['ignore', 'pipe', 'pipe']
     });
@@ -137,15 +145,22 @@ async function withServer(fakeGoogle, fn) {
     });
 
     const baseUrl = `http://127.0.0.1:${port}`;
+    let stoppedByTest = false;
     try {
         await waitForHealth(baseUrl, child);
         await fn(baseUrl, { dataDir });
     } finally {
-        child.kill('SIGTERM');
+        if (child.exitCode === null && child.signalCode === null) {
+            const stopped = once(child, 'exit');
+            stoppedByTest = true;
+            child.kill('SIGTERM');
+            await stopped;
+        }
         fs.rmSync(dataDir, { recursive: true, force: true });
     }
 
-    if (child.exitCode !== null && child.exitCode !== 0) {
+    // tsx relays SIGTERM and exits 143, which is expected only when the test stopped it.
+    if (!stoppedByTest && child.exitCode !== null && child.exitCode !== 0) {
         throw new Error(stderr || `server exited with ${child.exitCode}`);
     }
 }
@@ -168,6 +183,7 @@ async function main() {
     assert.strictEqual(verifySessionCookieValue(`${cookie}x`, { secret: sessionSecret, now: 1700000000001 }).ok, false);
     assert.strictEqual(verifySessionCookieValue(cookie, { secret: sessionSecret, now: 1700000000000 + 8 * 24 * 60 * 60 * 1000 }).ok, false);
 
+    if (process.env.TEST_LIBSQL_URL) await resetTestDatabase(process.env.TEST_LIBSQL_URL);
     const fakeGoogle = await createFakeGoogleServer();
     try {
         await withServer(fakeGoogle, async (baseUrl, { dataDir }) => {
@@ -268,9 +284,13 @@ async function main() {
             const successfulPayload = await successfulWrite.json();
             assert(successfulPayload.data.payments.some(payment => payment.note === 'critical-write-success'));
 
-            const backupDir = path.join(dataDir, 'backups');
-            fs.rmSync(backupDir, { recursive: true, force: true });
-            fs.writeFileSync(backupDir, 'force backup failure');
+            const database = process.env.TEST_LIBSQL_URL || path.join(dataDir, 'database.db');
+            async function execute(sql, args = []) {
+                const client = openDatabase(database);
+                try { return await client.execute({ sql, args }); }
+                finally { client.close(); }
+            }
+            await execute("CREATE TRIGGER fail_backup BEFORE INSERT ON backups BEGIN SELECT RAISE(ABORT,'forced backup failure'); END;");
 
             const failedWrite = await fetch(`${baseUrl}/api/payment`, {
                 method: 'POST',
@@ -292,8 +312,7 @@ async function main() {
             assert.strictEqual(failedWritePayload.error, '資料寫入失敗，已停止本次操作');
             assert(!JSON.stringify(failedWritePayload).includes(dataDir));
 
-            fs.rmSync(backupDir, { force: true });
-            fs.mkdirSync(backupDir);
+            await execute('DROP TRIGGER fail_backup');
 
             const dataAfterFailedWrite = await fetch(`${baseUrl}/api/data`, {
                 headers: { Cookie: sessionCookie }
@@ -304,9 +323,8 @@ async function main() {
             assert(!dataAfterFailedWritePayload.payments.some(payment => payment.note === 'must-not-persist'));
 
             const invalidBackupName = 'database_20260711_202500_000_deadbeef.db';
-            fs.writeFileSync(path.join(backupDir, invalidBackupName), 'not a sqlite database');
-            const liveDbPath = path.join(dataDir, 'database.db');
-            const liveDbBeforeInvalidRestore = fs.readFileSync(liveDbPath);
+            await execute('INSERT INTO backups (id,created_at,reason,fingerprint,size,snapshot_json) VALUES (?,?,?,?,?,?)', [invalidBackupName, new Date().toISOString(), 'test.corrupt', 'invalid', 8, 'not json']);
+            const beforeInvalidRestore = getCanonicalPersistedFingerprint(await (await fetch(`${baseUrl}/api/data`, { headers: { Cookie: sessionCookie } })).json());
 
             const invalidRestore = await fetch(`${baseUrl}/api/backups/restore`, {
                 method: 'POST',
@@ -318,7 +336,7 @@ async function main() {
             });
             assert.strictEqual(invalidRestore.status, 400);
             assert.deepStrictEqual(await invalidRestore.json(), { error: '備份檔案無效或已損毀' });
-            assert.deepStrictEqual(fs.readFileSync(liveDbPath), liveDbBeforeInvalidRestore);
+            assert.strictEqual(getCanonicalPersistedFingerprint(await (await fetch(`${baseUrl}/api/data`, { headers: { Cookie: sessionCookie } })).json()), beforeInvalidRestore);
 
             const createBackup = await fetch(`${baseUrl}/api/backups/create`, {
                 method: 'POST',
@@ -344,19 +362,12 @@ async function main() {
             });
             assert.strictEqual(writeAfterBackup.status, 200);
 
-            for (const entry of fs.readdirSync(backupDir)) {
-                if (entry !== validBackupName) {
-                    fs.rmSync(path.join(backupDir, entry), { recursive: true, force: true });
-                }
-            }
+            await execute('DELETE FROM backups WHERE id<>?', [validBackupName]);
             for (let i = 0; i < 49; i += 1) {
                 const dummyName = `database_20990101_000000_${String(i).padStart(3, '0')}_aaaaaaaa.db`;
-                fs.copyFileSync(path.join(backupDir, validBackupName), path.join(backupDir, dummyName));
+                await execute('INSERT INTO backups (id,created_at,reason,fingerprint,size,snapshot_json) SELECT ?,created_at,reason,fingerprint,size,snapshot_json FROM backups WHERE id=?', [dummyName, validBackupName]);
             }
-            assert.strictEqual(
-                fs.readdirSync(backupDir).filter(name => name.startsWith('database_') && name.endsWith('.db')).length,
-                50
-            );
+            assert.strictEqual(Number((await execute('SELECT COUNT(*) AS count FROM backups')).rows[0].count), 50);
 
             const boundaryRestore = await fetch(`${baseUrl}/api/backups/restore`, {
                 method: 'POST',
@@ -370,8 +381,9 @@ async function main() {
             const boundaryRestorePayload = await boundaryRestore.json();
             assert(boundaryRestorePayload.data.payments.some(payment => payment.note === 'critical-write-success'));
             assert(!boundaryRestorePayload.data.payments.some(payment => payment.note === 'remove-by-restore'));
-            assert(fs.existsSync(path.join(backupDir, validBackupName)));
-            assert(!fs.readdirSync(backupDir).some(name => name.startsWith('.restore-safety-')));
+            const inventory = await (await fetch(`${baseUrl}/api/backups`, { headers: { Cookie: sessionCookie } })).json();
+            assert(inventory.backups.some(backup => backup.filename === validBackupName));
+            assert(inventory.backups.some(backup => backup.reason === 'restore.safety'));
 
             const authedData = await fetch(`${baseUrl}/api/data`, {
                 headers: { Cookie: sessionCookie }

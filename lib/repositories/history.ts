@@ -1,4 +1,5 @@
-import type { Database as SqliteDatabase } from 'better-sqlite3';
+import type { InStatement } from '@libsql/client';
+import { rowChanges, type SqlRow } from './shared.js';
 import type { HistoryEntry } from '../../src/types/billing.js';
 
 export interface HistoryRow {
@@ -10,8 +11,9 @@ export interface HistoryRow {
 }
 
 export class HistoryRepository {
-  static findAll(db: SqliteDatabase): HistoryEntry[] {
-    const rows = db.prepare('SELECT * FROM history').all() as HistoryRow[];
+  static readonly select = 'SELECT * FROM history';
+
+  static decode(rows: HistoryRow[]): HistoryEntry[] {
     return rows.map(row => ({
       month: row.month,
       balances: JSON.parse(row.balances_json),
@@ -21,33 +23,17 @@ export class HistoryRepository {
     }));
   }
 
-  static saveAll(db: SqliteDatabase, history: HistoryEntry[]): void {
-    const insertStmt = db.prepare(`
-      INSERT INTO history (month, balances_json, payments_json, temp_charges_json, seal_json)
-      VALUES (@month, @balances_json, @payments_json, @temp_charges_json, @seal_json)
-      ON CONFLICT(month) DO UPDATE SET
-        balances_json = excluded.balances_json,
-        payments_json = excluded.payments_json,
-        temp_charges_json = excluded.temp_charges_json,
-        seal_json = excluded.seal_json
-    `);
-
-    for (const h of history) {
-      insertStmt.run({
+  static encode(history: HistoryEntry[]): SqlRow[] {
+    return history.map(h => ({
         month: h.month,
         balances_json: JSON.stringify(h.balances || []),
         payments_json: JSON.stringify(h.payments || []),
         temp_charges_json: JSON.stringify(h.tempCharges || []),
         seal_json: h.seal ? JSON.stringify(h.seal) : null
-      });
-    }
+      }));
+  }
 
-    const months = history.map(h => h.month);
-    if (months.length > 0) {
-      const placeholders = months.map(() => '?').join(',');
-      db.prepare(`DELETE FROM history WHERE month NOT IN (${placeholders})`).run(months);
-    } else {
-      db.prepare('DELETE FROM history').run();
-    }
+  static changes(previous: HistoryEntry[], next: HistoryEntry[]): InStatement[] {
+    return rowChanges('history', 'month', this.encode(previous), this.encode(next));
   }
 }

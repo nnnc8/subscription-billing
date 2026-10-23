@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { isArchivedEntity, isSubscriptionBillable } from '../billing.js';
+import { formatMoney, getPlatformPrice, isArchivedEntity } from '../billing.js';
+import { initialOf, memberToneStyle, SEAT_STATE_LABEL, seatState } from '../display.js';
+import type { SeatState } from '../display.js';
 import type { ApiFetch, Database, RefreshData, ShowToast, Subscription } from '../types/billing.js';
 
 interface SubscriptionsTabProps {
@@ -13,6 +15,13 @@ interface SubscriptionsTabProps {
 interface MutationResponse {
   error?: string;
 }
+
+const SEAT_STATE_TONE: Record<SeatState, string> = {
+  billing: 'pos',
+  upcoming: 'accent',
+  ended: '',
+  stopped: '',
+};
 
 export function SubscriptionsTab({ data, apiFetch, refreshData, showToast }: SubscriptionsTabProps) {
   const [memberName, setMemberName] = useState('');
@@ -97,79 +106,99 @@ export function SubscriptionsTab({ data, apiFetch, refreshData, showToast }: Sub
     );
   }
 
+  // Seats read best grouped by platform; within a platform, the earliest seat first.
+  const platformOrder = (name: string) => {
+    const index = data.platforms.findIndex((platform) => platform.name === name);
+    return index === -1 ? data.platforms.length : index;
+  };
+  const rows = [...data.subscriptions].sort((left, right) => (
+    platformOrder(left.platformName) - platformOrder(right.platformName)
+    || left.startMonth.localeCompare(right.startMonth)
+  ));
+
   return (
-    <>
-      <div className="table-container" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
-        <h2 style={{ marginBottom: '1.25rem', fontSize: '1.1rem', fontWeight: 600 }}>建立名額配置</h2>
-        <form onSubmit={handleAddSubscription} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', alignItems: 'end' }}>
-          <div className="form-group">
+    <div className="stack">
+      <article className="card">
+        <header className="card-head">
+          <div><h2>新增名額</h2><p className="meta">把成員加進平台，從起算月份開始計費。</p></div>
+        </header>
+        <form className="seat-form" onSubmit={handleAddSubscription}>
+          <div className="field">
             <label htmlFor="subscription-member">選擇成員姓名</label>
-            <select id="subscription-member" className="form-control" value={memberName} onChange={(event) => setMemberName(event.target.value)}>
-              <option value="">-- 請選擇 --</option>
+            <select id="subscription-member" className="input" value={memberName} onChange={(event) => setMemberName(event.target.value)}>
+              <option value="">請選擇成員</option>
               {activeMembers.map((member) => <option key={member.id} value={member.name}>{member.name}</option>)}
             </select>
           </div>
-          <div className="form-group">
+          <div className="field">
             <label htmlFor="subscription-platform">訂閱平台</label>
-            <select id="subscription-platform" className="form-control" value={selectedPlatform} onChange={(event) => setPlatformName(event.target.value)}>
+            <select id="subscription-platform" className="input" value={selectedPlatform} onChange={(event) => setPlatformName(event.target.value)}>
               {activePlatforms.map((platform) => <option key={platform.id} value={platform.name}>{platform.name}</option>)}
               <option value="自訂">自訂月費項目</option>
             </select>
           </div>
-          <div className="form-group">
+          <div className="field">
             <label htmlFor="subscription-start">起算月份 (YYYY/MM)</label>
-            <input id="subscription-start" className="form-control" placeholder="如 2026/05" value={startMonth} onChange={(event) => setStartMonth(event.target.value)} />
+            <input id="subscription-start" className="input" placeholder={data.currentMonth} value={startMonth} onChange={(event) => setStartMonth(event.target.value)} />
           </div>
-          <button type="submit" className="btn btn-primary" disabled={saving} style={{ height: '42px' }}>
-            {saving ? '寫入中...' : '寫入配置'}
+          <button type="submit" className="btn btn-primary" disabled={saving}>
+            {saving ? '寫入中...' : '加入名額'}
           </button>
         </form>
-      </div>
+      </article>
 
-      <div className="table-container">
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th><th>姓名</th><th>訂閱項目</th><th>名額</th><th>起算月份</th><th>退出月份</th>
-                <th style={{ textAlign: 'right' }}>單價 / 月費</th><th>狀態</th><th style={{ textAlign: 'center' }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.subscriptions.map((subscription, index) => {
-                const active = isSubscriptionBillable(subscription, data, data.currentMonth);
-                const platform = data.platforms.find((item) => item.name === subscription.platformName);
-                const activeCount = platform?.billingMode === 'split'
-                  ? data.subscriptions.filter((item) => item.platformName === platform.name && isSubscriptionBillable(item, data, data.currentMonth)).length
-                  : 0;
-                const price = subscription.platformName === '自訂'
-                  ? `${data.members.find((member) => member.name === subscription.memberName)?.customFee ?? 0} (自訂)`
-                  : platform?.billingMode === 'split'
-                    ? `${activeCount ? Math.round(platform.totalCost / activeCount) : 0} (均分 $${platform.totalCost} / ${activeCount}人)`
-                    : `${platform?.price ?? 0} (固定)`;
-                return (
-                  <tr key={subscription.id}>
-                    <td>{index + 1}</td>
-                    <td style={{ fontWeight: 600 }}>{subscription.memberName}</td>
-                    <td>{subscription.platformName}</td>
-                    <td>{subscription.seatLabel || (subscription.allowDuplicate ? '額外名額' : '—')}</td>
-                    <td>{subscription.startMonth}</td>
-                    <td>{subscription.exitMonth || '—'}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>${price}</td>
-                    <td><span className={`status-badge ${active ? 'paid' : 'unpaid'}`}>{active ? 'ACTIVE' : 'EXITED'}</span></td>
-                    <td style={{ textAlign: 'center' }}>
-                      <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
-                        <button type="button" className="btn btn-secondary" onClick={() => void handleSetExitMonth(subscription)} disabled={saving}>設定退出月</button>
-                        <button type="button" className="btn btn-danger" onClick={() => void handleRemoveSubscription(subscription.id)} disabled={saving}>移除</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
+      <article className="card">
+        <header className="card-head">
+          <div><h2>全部名額</h2><p className="meta">{data.subscriptions.length} 筆配置 · 月費依 {data.currentMonth} 計算</p></div>
+        </header>
+        {rows.length === 0 ? <p className="empty">還沒有任何名額。先在上方把成員加進平台。</p> : (
+          <div className="table-wrap">
+            <table className="seat-table">
+              <thead>
+                <tr>
+                  <th>成員</th><th>平台</th><th className="col-optional">名額</th><th className="col-optional">起算</th><th className="col-optional">退出</th>
+                  <th className="n">月費</th><th>狀態</th><th className="n">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((subscription) => {
+                  const state = seatState(subscription, data);
+                  const platform = data.platforms.find((item) => item.name === subscription.platformName);
+                  const member = data.members.find((item) => item.name === subscription.memberName);
+                  const price = subscription.platformName === '自訂'
+                    ? member?.customFee ?? 0
+                    : getPlatformPrice(platform, data, data.currentMonth);
+                  const basis = subscription.platformName === '自訂'
+                    ? '自訂月費'
+                    : platform?.billingMode === 'split' ? `均分 ${formatMoney(platform.totalCost)}` : '固定價格';
+                  return (
+                    <tr key={subscription.id}>
+                      <td>
+                        <span className="cell-person">
+                          <span className="avatar avatar-sm" style={memberToneStyle(data.members, { id: subscription.memberId, name: subscription.memberName })} aria-hidden="true">{initialOf(subscription.memberName)}</span>
+                          {subscription.memberName}
+                        </span>
+                      </td>
+                      <td>{subscription.platformName}</td>
+                      <td className="col-optional">{subscription.seatLabel || (subscription.allowDuplicate ? '額外名額' : '—')}</td>
+                      <td className="col-optional">{subscription.startMonth}</td>
+                      <td className="col-optional">{subscription.exitMonth || '—'}</td>
+                      <td className="n strong">{state === 'billing' ? formatMoney(price) : '—'}<span className="sub">{basis}</span></td>
+                      <td><span className={`pill ${SEAT_STATE_TONE[state]}`}>{SEAT_STATE_LABEL[state]}</span></td>
+                      <td className="n">
+                        <span className="row-actions">
+                          <button type="button" className="btn btn-ghost" onClick={() => void handleSetExitMonth(subscription)} disabled={saving}>設定退出月</button>
+                          <button type="button" className="btn btn-ghost btn-danger" onClick={() => void handleRemoveSubscription(subscription.id)} disabled={saving}>移除</button>
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </article>
+    </div>
   );
 }

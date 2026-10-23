@@ -1,4 +1,5 @@
-import type { Database as SqliteDatabase } from 'better-sqlite3';
+import type { InStatement } from '@libsql/client';
+import { rowChanges, type SqlRow } from './shared.js';
 import type { Platform } from '../../src/types/billing.js';
 
 export interface PlatformRow {
@@ -14,8 +15,9 @@ export interface PlatformRow {
 }
 
 export class PlatformRepository {
-  static findAll(db: SqliteDatabase): Platform[] {
-    const rows = db.prepare('SELECT * FROM platforms').all() as PlatformRow[];
+  static readonly select = 'SELECT * FROM platforms';
+
+  static decode(rows: PlatformRow[]): Platform[] {
     return rows.map(row => ({
       id: row.id,
       name: row.name,
@@ -29,23 +31,8 @@ export class PlatformRepository {
     }));
   }
 
-  static saveAll(db: SqliteDatabase, platforms: Platform[]): void {
-    const insertStmt = db.prepare(`
-      INSERT INTO platforms (id, name, billingMode, price, totalCost, status, archived, archivedAt, archivedMonth)
-      VALUES (@id, @name, @billingMode, @price, @totalCost, @status, @archived, @archivedAt, @archivedMonth)
-      ON CONFLICT(id) DO UPDATE SET
-        name = excluded.name,
-        billingMode = excluded.billingMode,
-        price = excluded.price,
-        totalCost = excluded.totalCost,
-        status = excluded.status,
-        archived = excluded.archived,
-        archivedAt = excluded.archivedAt,
-        archivedMonth = excluded.archivedMonth
-    `);
-
-    for (const p of platforms) {
-      insertStmt.run({
+  static encode(platforms: Platform[]): SqlRow[] {
+    return platforms.map(p => ({
         id: p.id,
         name: p.name,
         billingMode: p.billingMode,
@@ -55,15 +42,10 @@ export class PlatformRepository {
         archived: p.archived ? 1 : 0,
         archivedAt: p.archivedAt || null,
         archivedMonth: p.archivedMonth || null
-      });
-    }
+      }));
+  }
 
-    const ids = platforms.map(p => p.id);
-    if (ids.length > 0) {
-      const placeholders = ids.map(() => '?').join(',');
-      db.prepare(`DELETE FROM platforms WHERE id NOT IN (${placeholders})`).run(ids);
-    } else {
-      db.prepare('DELETE FROM platforms').run();
-    }
+  static changes(previous: Platform[], next: Platform[]): InStatement[] {
+    return rowChanges('platforms', 'id', this.encode(previous), this.encode(next));
   }
 }

@@ -1,3 +1,4 @@
+import { withWriteTransaction } from '../../lib/db.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -52,7 +53,7 @@ function getSubscriptionDisplayName(subscription: Subscription): string {
 async function chat(runtime: Runtime, reqBody: unknown, isLegacy = false) {
     const { message, history } = parseInput(chatSchema, reqBody, '缺少 message 參數');
     const result = await handleAssistantChat(
-        readDatabase(runtime),
+        await readDatabase(runtime),
         message,
         history as unknown as AssistantMessage[]
     );
@@ -64,7 +65,7 @@ export function createAiAutomationRouter(runtime: Runtime): Router {
 
     router.post('/api/ai/generate-reminder', async (req, res) => {
         const { memberId, style } = parseInput(reminderSchema, req.body, '缺少 memberId 參數');
-        const db = readDatabase(runtime);
+        const db = await readDatabase(runtime);
         const member = db.members.find(item => item.id === memberId);
         if (!member) { res.status(404).json({ error: '找不到成員' }); return; }
         const balance = calculateCurrentMonthBalances(db).find(item => isMemberRecord(item, member));
@@ -122,12 +123,12 @@ export function createAiAutomationRouter(runtime: Runtime): Router {
 
     router.post('/api/ai/rag-search', async (req, res) => {
         const { query, topK } = parseInput(ragSchema, req.body, '缺少 query 參數');
-        res.json({ success: true, results: await queryRAG(readDatabase(runtime), query, topK) });
+        res.json({ success: true, results: await queryRAG(await readDatabase(runtime), query, topK) });
     });
 
     router.post('/api/automation/ingest', async (req, res) => {
         const { text, mode } = parseInput(ingestSchema, req.body, '缺少輸入文字');
-        const db = readDatabase(runtime);
+        const db = await readDatabase(runtime);
         const result = await parseAndClassifyProposals(
             text,
             db,
@@ -152,10 +153,11 @@ export function createAiAutomationRouter(runtime: Runtime): Router {
                             ...(applyResult.ledgerEventId ? { ledgerEventId: applyResult.ledgerEventId } : {})
                         });
                     }
+                    responseResult = { ...result, applied: persisted };
                     return persisted;
-                }, { reason: 'automation.ingest.apply' });
+                }, { reason: 'automation.ingest.apply', afterSave: tx => runtime.storeProposals([...responseResult.applied, ...result.pending, ...result.rejected], tx) });
                 responseResult = { ...result, applied };
-                runtime.automationInbox.push(...applied, ...result.pending, ...result.rejected);
+
                 res.json({ success: true, ...responseResult });
                 return;
             } catch (error) {
@@ -166,27 +168,28 @@ export function createAiAutomationRouter(runtime: Runtime): Router {
                 throw error;
             }
         }
-        runtime.automationInbox.push(...result.applied, ...result.pending, ...result.rejected);
+        await runtime.storeProposals([...result.applied, ...result.pending, ...result.rejected]);
         res.json({ success: true, ...responseResult });
     });
 
-    router.get('/api/automation/inbox', (_req, res) => {
-        res.json({ success: true, proposals: runtime.automationInbox });
+    router.get('/api/automation/inbox', async (_req, res) => {
+        res.json({ success: true, proposals: await runtime.listProposals() });
     });
 
     router.post('/api/automation/confirm/:id', async (req, res) => {
         const { id } = parseInput(proposalParamsSchema, req.params, 'Proposal ID 不合法');
         parseInput(emptyPayloadSchema, req.body ?? {}, 'Invalid confirmation payload');
-        const proposal = runtime.automationInbox.find(item => item.id === id);
+        const proposal = await runtime.getProposal(id);
         if (!proposal) { res.status(404).json({ error: '找不到該 proposal' }); return; }
         if (proposal.status !== 'pending') {
             res.status(409).json({ error: `Proposal 狀態為 ${proposal.status}，無法再確認` });
             return;
         }
 
+        let confirmed = proposal;
         try {
             const { data, value: appliedProposal } = await runtime.mutateDB(db => {
-                const latest = runtime.automationInbox.find(item => item.id === id);
+                const latest = proposal;
                 if (!latest || latest.status !== 'pending') {
                     throw httpError(409, 'Proposal 已變更，請重新整理後再試');
                 }
@@ -194,15 +197,14 @@ export function createAiAutomationRouter(runtime: Runtime): Router {
                 if (!result.ok) {
                     throw httpError(409, result.error || '套用時重新驗證失敗');
                 }
-                return {
+                confirmed = {
                     ...latest,
                     status: 'applied' as const,
                     appliedAt: new Date().toISOString(),
                     ...(result.ledgerEventId ? { ledgerEventId: result.ledgerEventId } : {})
                 };
-            }, { reason: 'automation.confirm.apply' });
-            const index = runtime.automationInbox.findIndex(item => item.id === id);
-            if (index >= 0) runtime.automationInbox[index] = appliedProposal;
+                return confirmed;
+            }, { reason: 'automation.confirm.apply', afterSave: tx => runtime.transitionProposal(tx, confirmed) });
             sendDatabase(res, data, { proposal: appliedProposal });
         } catch (error) {
             if (error instanceof MutationPersistenceError) {
@@ -213,10 +215,10 @@ export function createAiAutomationRouter(runtime: Runtime): Router {
         }
     });
 
-    router.post('/api/automation/reject/:id', (req, res) => {
+    router.post('/api/automation/reject/:id', async (req, res) => {
         const { id } = parseInput(proposalParamsSchema, req.params, 'Proposal ID 不合法');
         const { reason } = parseInput(rejectSchema, req.body ?? {}, '拒絕原因格式不正確');
-        const proposal = runtime.automationInbox.find(item => item.id === id);
+        const proposal = await runtime.getProposal(id);
         if (!proposal) { res.status(404).json({ error: '找不到該 proposal' }); return; }
         if (proposal.status !== 'pending') {
             res.status(409).json({ error: `Proposal 狀態為 ${proposal.status}，無法拒絕` });
@@ -228,6 +230,7 @@ export function createAiAutomationRouter(runtime: Runtime): Router {
             rejectedBy: 'manual',
             rejectReason: reason || '使用者手動拒絕'
         });
+        await withWriteTransaction(runtime.client, tx => runtime.transitionProposal(tx, proposal));
         res.json({ success: true, proposal });
     });
 

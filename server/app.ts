@@ -30,6 +30,11 @@ export function createApp({
     app.use(express.json());
     app.use(express.static(activeRuntime.paths.distDir));
 
+    app.use('/api', async (req, _res, next) => {
+        if (req.path === '/health') { next(); return; }
+        await activeRuntime.ensureReady();
+        next();
+    });
     app.use(['/api/auth/login', '/api/auth/callback', '/api/auth/logout-all'], createAuthRateLimit(activeRuntime));
     app.use(createAuthRuntimeRouter(activeRuntime));
     app.use('/api', createRequireAuth(activeRuntime));
