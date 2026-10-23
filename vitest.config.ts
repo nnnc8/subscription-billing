@@ -5,6 +5,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    setupFiles: ['tests/setup-database.ts'],
+    ...(process.env.TEST_LIBSQL_URL ? { fileParallelism: false, testTimeout: 30000, hookTimeout: 30000 } : {}),
     coverage: {
       provider: 'v8',
       include: [

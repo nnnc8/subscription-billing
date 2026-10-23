@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -33,7 +32,8 @@ const callbackQuerySchema = z.object({
 export function createAuthRuntimeRouter(runtime: Runtime): Router {
     const router = Router();
 
-    router.get('/api/health', (req, res) => {
+    router.get('/api/health', async (req, res) => {
+        try { await runtime.ensureReady(); } catch { /* Readiness details remain private. */ }
         const readiness = runtime.getReadiness();
         const healthy = readiness.status === 'ready';
         const summary = {
@@ -43,26 +43,25 @@ export function createAuthRuntimeRouter(runtime: Runtime): Router {
         };
         // The endpoint is public for health checks; failure reasons can name records, so
         // operational details are only shown to a signed-in operator.
-        if (!runtime.isAuthConfigured() || !verifyRequestSession(runtime, req).ok) {
+        if (!runtime.isAuthConfigured() || !(await verifyRequestSession(runtime, req)).ok) {
             res.status(healthy ? 200 : 503).json(summary);
             return;
         }
         res.status(healthy ? 200 : 503).json({
             ...summary,
-            dataWritable: fs.existsSync(runtime.paths.dataDir)
-                && fs.statSync(runtime.paths.dataDir).isDirectory(),
+            dataWritable: healthy,
             host: runtime.config.host,
             port: runtime.config.port,
             ...(readiness.reason ? { readinessReason: readiness.reason } : {})
         });
     });
 
-    router.get('/api/auth/session', (req, res) => {
+    router.get('/api/auth/session', async (req, res) => {
         if (!runtime.isAuthConfigured()) {
             res.json({ authenticated: false, authConfigured: false });
             return;
         }
-        const session = verifyRequestSession(runtime, req);
+        const session = await verifyRequestSession(runtime, req);
         res.json({
             authenticated: session.ok,
             ...(session.ok && session.session?.user ? { user: session.session.user } : {})
@@ -128,17 +127,17 @@ export function createAuthRuntimeRouter(runtime: Runtime): Router {
         res.json({ authenticated: false });
     });
 
-    router.post('/api/auth/logout-all', (req, res) => {
+    router.post('/api/auth/logout-all', async (req, res) => {
         parseInput(emptyPayloadSchema, req.body ?? {}, 'Invalid logout payload');
         if (!runtime.isAuthConfigured()) {
             res.status(503).json({ error: 'Authentication is not configured' });
             return;
         }
-        if (!verifyRequestSession(runtime, req).ok) {
+        if (!(await verifyRequestSession(runtime, req)).ok) {
             res.status(401).json({ error: 'Unauthorized' });
             return;
         }
-        runtime.revokeAllSessions();
+        await runtime.revokeAllSessions();
         res.setHeader('Set-Cookie', clearSessionCookie(runtime));
         res.json({ authenticated: false, revokedAllSessions: true });
     });

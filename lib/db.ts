@@ -2,8 +2,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import SqliteDatabase from 'better-sqlite3';
-import type { Database as SQLiteConnection } from 'better-sqlite3';
+import { type Client, type Transaction, type InStatement } from '@libsql/client';
+import { openDatabase } from './database-client.js';
+export { openDatabase } from './database-client.js';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { Database } from '../src/types/billing.js';
 import { normalizeDatabaseRelations } from './accounting.js';
 
@@ -99,181 +101,133 @@ function parseLifecycleMetadata(value: string | undefined): Database['lifecycle'
   }
 }
 
-/**
- * Runs pending DDL migrations in a transaction.
- */
-export function runMigrations(sqlitePath: string, migrationsDirOverride = migrationsDir): void {
-  const db = new SqliteDatabase(sqlitePath);
-  try {
-    db.pragma('journal_mode = WAL');
-    db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
+export type DatabaseConnection = Client | Transaction;
+export type DatabaseSource = string | Client;
 
-    const appliedRows = db.prepare('SELECT version FROM schema_migrations').all() as Array<{ version: string }>;
-    const applied = new Set(appliedRows.map(r => r.version));
+async function withClient<T>(source: DatabaseSource, operation: (client: Client) => Promise<T>): Promise<T> {
+  const client = typeof source === 'string' ? openDatabase(source) : source;
+  try { return await operation(client); }
+  finally { if (typeof source === 'string') client.close(); }
+}
 
-    if (!fs.existsSync(migrationsDirOverride)) {
-      console.warn(`[migration] Migrations directory does not exist: ${migrationsDirOverride}`);
-      return;
+export async function withWriteTransaction<T>(client: Client, operation: (tx: Transaction) => Promise<T>): Promise<T> {
+  let tx: Transaction | undefined;
+  for (let attempt = 0; ; attempt++) {
+    try { tx = await client.transaction('write'); break; }
+    catch (error) {
+      // Only retry a failed BEGIN. Never replay the mutator or an uncertain COMMIT.
+      if (attempt >= 4 || !/SQLITE_BUSY/.test(String(error))) throw error;
+      await delay(25 * (attempt + 1));
     }
-
-    const files = fs.readdirSync(migrationsDirOverride)
-      .filter(f => f.endsWith('.sql'))
-      .sort();
-
-    for (const file of files) {
-      const version = file.replace(/\.sql$/, '');
-      if (applied.has(version)) continue;
-
-      const sql = fs.readFileSync(path.join(migrationsDirOverride, file), 'utf8');
-
-      const runMigration = db.transaction(() => {
-        db.exec(sql);
-        db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(version, new Date().toISOString());
-      });
-
-      runMigration();
-      console.log(`[migration] Applied migration: ${file}`);
-    }
-  } finally {
-    db.close();
   }
+  try {
+    const result = await operation(tx);
+    await tx.commit();
+    return result;
+  } catch (error) {
+    try { await tx.rollback(); } catch { /* A closed/expired transaction is already rolled back. */ }
+    throw error;
+  } finally { tx.close(); }
 }
 
-/**
- * Initializes the SQLite database and runs DDL migrations.
- */
-export function initSQLite(sqlitePath: string): void {
-  runMigrations(sqlitePath);
+/** All pending migrations share one write transaction, including the version check. */
+export async function runMigrations(source: DatabaseSource, directory = migrationsDir): Promise<void> {
+  const files = fs.readdirSync(directory).filter(file => file.endsWith('.sql')).sort();
+  const migrations = files.map(file => ({ version: file.replace(/\.sql$/, ''), sql: fs.readFileSync(path.join(directory, file), 'utf8') }));
+  await withClient(source, client => withWriteTransaction(client, async tx => {
+    await tx.execute('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
+    const applied = new Set((await tx.execute('SELECT version FROM schema_migrations')).rows.map(row => String(row.version)));
+    for (const migration of migrations) {
+      if (applied.has(migration.version)) continue;
+      await tx.executeMultiple(migration.sql);
+      await tx.execute({ sql: 'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', args: [migration.version, new Date().toISOString()] });
+    }
+  }));
 }
 
-function loadFromConnection(db: SQLiteConnection): Database {
-  const metadataMap = SettingsRepository.load(db);
+export const initSQLite = runMigrations;
 
-  const currentMonth = metadataMap.get('currentMonth') || '2026/05';
-  const baseMonth = metadataMap.get('baseMonth') || '2026/05';
-  const bankInfo = metadataMap.get('bankInfo') || '';
-  const reminderStyle = metadataMap.get('reminderStyle') || 'friendly';
+export async function loadFromConnection(db: DatabaseConnection): Promise<Database> {
+  // Client.batch(..., read) is one consistent snapshot and one remote round trip.
+  // Transaction.batch participates in the existing transaction.
+  const statements = [
+    'SELECT key, value FROM metadata', PlatformRepository.select, MemberRepository.select,
+    SubscriptionRepository.select, PaymentRepository.select, TempChargeRepository.select,
+    HistoryRepository.select, LedgerRepository.select
+  ];
+  const results = await ('protocol' in db ? db.batch(statements, 'read') : db.batch(statements));
+  const metadataMap = SettingsRepository.decode(results[0]!.rows as unknown as Parameters<typeof SettingsRepository.decode>[0]);
   const lifecycle = parseLifecycleMetadata(metadataMap.get('lifecycle'));
-
-  const platforms = PlatformRepository.findAll(db);
-  const members = MemberRepository.findAll(db);
-  const subscriptions = SubscriptionRepository.findAll(db);
-  const payments = PaymentRepository.findAll(db);
-  const tempCharges = TempChargeRepository.findAll(db);
-  const history = HistoryRepository.findAll(db);
-  const entries = LedgerRepository.findAll(db);
+  const entries = LedgerRepository.decode(results[7]!.rows as unknown as Parameters<typeof LedgerRepository.decode>[0]);
   const lastEntry = entries.at(-1);
-
-  const lastHash = metadataMap.get('ledgerLastHash') || lastEntry?.hash || '';
-  const updatedAt = metadataMap.get('ledgerUpdatedAt') || lastEntry?.at || '';
-  const version = Number(metadataMap.get('ledgerVersion') || '1');
-
-  const rawDb: Database = {
-    currentMonth,
-    baseMonth,
-    bankInfo,
-    reminderStyle,
-    platforms,
-    members,
-    subscriptions,
-    payments,
-    tempCharges,
-    history,
+  return normalizeDatabaseRelations({
+    currentMonth: metadataMap.get('currentMonth') || '2026/05',
+    baseMonth: metadataMap.get('baseMonth') || '2026/05',
+    bankInfo: metadataMap.get('bankInfo') || '',
+    reminderStyle: metadataMap.get('reminderStyle') || 'friendly',
+    platforms: PlatformRepository.decode(results[1]!.rows as unknown as Parameters<typeof PlatformRepository.decode>[0]),
+    members: MemberRepository.decode(results[2]!.rows as unknown as Parameters<typeof MemberRepository.decode>[0]),
+    subscriptions: SubscriptionRepository.decode(results[3]!.rows as unknown as Parameters<typeof SubscriptionRepository.decode>[0]),
+    payments: PaymentRepository.decode(results[4]!.rows as unknown as Parameters<typeof PaymentRepository.decode>[0]),
+    tempCharges: TempChargeRepository.decode(results[5]!.rows as unknown as Parameters<typeof TempChargeRepository.decode>[0]),
+    history: HistoryRepository.decode(results[6]!.rows as unknown as Parameters<typeof HistoryRepository.decode>[0]),
     ledger: {
-      version,
-      entries,
-      lastHash,
-      updatedAt
+      version: Number(metadataMap.get('ledgerVersion') || 1), entries,
+      lastHash: metadataMap.get('ledgerLastHash') || lastEntry?.hash || '',
+      updatedAt: metadataMap.get('ledgerUpdatedAt') || lastEntry?.at || ''
     },
     ...(lifecycle ? { lifecycle } : {})
+  });
+}
+
+export async function loadFromSQLite(source: DatabaseSource): Promise<Database> {
+  return withClient(source, loadFromConnection);
+}
+
+function metadata(data: Database): Record<string, string> {
+  return {
+    currentMonth: data.currentMonth || '', baseMonth: data.baseMonth || '',
+    bankInfo: data.bankInfo || '', reminderStyle: data.reminderStyle || 'friendly',
+    ledgerLastHash: data.ledger?.lastHash || '', ledgerUpdatedAt: data.ledger?.updatedAt || '',
+    ledgerVersion: String(data.ledger?.version || 1), lifecycle: data.lifecycle ? JSON.stringify(data.lifecycle) : ''
   };
-
-  return normalizeDatabaseRelations(rawDb);
 }
 
-/**
- * Loads the database state from SQLite relational tables.
- */
-export function loadFromSQLite(sqlitePath: string): Database {
-  const db = new SqliteDatabase(sqlitePath);
-  try {
-    return loadFromConnection(db);
-  } finally {
-    db.close();
-  }
-}
-
-/**
- * Saves the database state to SQLite relational tables using a clean write transaction.
- */
-export function saveToSQLite(sqlitePath: string, data: Database): void {
-  const db = new SqliteDatabase(sqlitePath);
-  const normalizedData = normalizeDatabaseRelations(data);
-  const expectedFingerprint = getCanonicalPersistedFingerprint(normalizedData);
-  try {
-    const runTransaction = db.transaction((dbState: Database) => {
-      SettingsRepository.save(db, {
-        currentMonth: dbState.currentMonth || '',
-        baseMonth: dbState.baseMonth || '',
-        bankInfo: dbState.bankInfo || '',
-        reminderStyle: dbState.reminderStyle || '',
-        ledgerLastHash: dbState.ledger?.lastHash || '',
-        ledgerUpdatedAt: dbState.ledger?.updatedAt || '',
-        ledgerVersion: String(dbState.ledger?.version || 1),
-        lifecycle: dbState.lifecycle ? JSON.stringify(dbState.lifecycle) : '',
-      });
-
-      PlatformRepository.saveAll(db, dbState.platforms || []);
-      MemberRepository.saveAll(db, dbState.members || []);
-      SubscriptionRepository.saveAll(db, dbState.subscriptions || []);
-      PaymentRepository.saveAll(db, dbState.payments || []);
-      TempChargeRepository.saveAll(db, dbState.tempCharges || []);
-      HistoryRepository.saveAll(db, dbState.history || []);
-      LedgerRepository.saveAll(db, dbState.ledger?.entries || []);
-
-      const readBack = loadFromConnection(db);
-      const actualFingerprint = getCanonicalPersistedFingerprint(readBack);
-      if (actualFingerprint !== expectedFingerprint) {
-        throw new Error('SQLite canonical projection read-back mismatch');
-      }
-    });
-
-    runTransaction(normalizedData);
-  } finally {
-    db.close();
-  }
-
-  // Verify the committed state again from a fresh connection.
-  const writtenDb = loadFromSQLite(sqlitePath);
-  if (getCanonicalPersistedFingerprint(writtenDb) !== expectedFingerprint) {
-    throw new Error('SQLite committed canonical projection mismatch');
+/** Write only changed rows; every statement stays far below SQLite's variable limit. */
+export async function writeDatabase(tx: Transaction, previous: Database, next: Database): Promise<void> {
+  const statements: InStatement[] = [
+    ...SettingsRepository.changes(metadata(previous), metadata(next)),
+    ...PlatformRepository.changes(previous.platforms, next.platforms),
+    ...MemberRepository.changes(previous.members, next.members),
+    ...SubscriptionRepository.changes(previous.subscriptions, next.subscriptions),
+    ...PaymentRepository.changes(previous.payments, next.payments),
+    ...TempChargeRepository.changes(previous.tempCharges, next.tempCharges),
+    ...HistoryRepository.changes(previous.history, next.history),
+    ...LedgerRepository.changes(previous.ledger.entries, next.ledger.entries)
+  ];
+  for (let start = 0; start < statements.length; start += 100) {
+    await tx.batch(statements.slice(start, start + 100));
   }
 }
 
-/**
- * Backup the SQLite database file to a destination path using better-sqlite3's backup method.
- */
-export async function backupSQLite(sqlitePath: string, backupPath: string): Promise<void> {
-  const db = new SqliteDatabase(sqlitePath);
-  try {
-    await db.backup(backupPath);
-  } finally {
-    db.close();
+export async function verifyDatabase(tx: Transaction, expected: Database): Promise<void> {
+  if (getCanonicalPersistedFingerprint(await loadFromConnection(tx)) !== getCanonicalPersistedFingerprint(expected)) {
+    throw new Error('SQLite canonical projection read-back mismatch');
   }
 }
 
-/**
- * Migrates data from JSON file into SQLite database.
- */
-export function migrateJsonToSQLite(jsonPath: string, sqlitePath: string): boolean {
-  try {
-    if (!fs.existsSync(jsonPath)) return false;
-    const jsonStr = fs.readFileSync(jsonPath, 'utf8');
-    const data = normalizeDatabaseRelations(JSON.parse(jsonStr));
-    saveToSQLite(sqlitePath, data);
-    return true;
-  } catch (err) {
-    console.error('Migration to SQLite failed:', err);
-    return false;
-  }
+export async function saveToSQLite(source: DatabaseSource, data: Database): Promise<void> {
+  const normalized = normalizeDatabaseRelations(data);
+  await withClient(source, client => withWriteTransaction(client, async tx => {
+    const previous = await loadFromConnection(tx);
+    await writeDatabase(tx, previous, normalized);
+    await verifyDatabase(tx, normalized);
+  }));
+}
+
+export async function migrateJsonToSQLite(jsonPath: string, source: DatabaseSource): Promise<boolean> {
+  if (!fs.existsSync(jsonPath)) return false;
+  const data = normalizeDatabaseRelations(JSON.parse(fs.readFileSync(jsonPath, 'utf8')));
+  await saveToSQLite(source, data);
+  return true;
 }

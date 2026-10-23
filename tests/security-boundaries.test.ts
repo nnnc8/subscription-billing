@@ -2,7 +2,7 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { resolveGoogleRedirectUri } from '../lib/google-oauth.js';
 import { createApp } from '../server/app.js';
-import { createTrustProxy, createRuntime } from '../server/runtime.js';
+import { createTrustProxy, createRuntime } from './test-database.js';
 
 const openServers: Array<ReturnType<ReturnType<typeof createApp>['listen']>> = [];
 

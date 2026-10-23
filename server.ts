@@ -8,14 +8,13 @@ import { createRuntime } from './server/runtime.js';
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export async function startServer() {
-    loadLocalEnv({ cwd: rootDir });
+    if (process.env.NODE_ENV !== 'test') loadLocalEnv({ cwd: rootDir });
     const runtime = createRuntime({ rootDir });
     if (runtime.isCloudBinding() && !runtime.isAuthConfigured()) {
         throw new Error('GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_ALLOWED_EMAILS, and APP_SESSION_SECRET are required when binding to a public host or running production.');
     }
 
-    await runtime.initializeAtomic();
-    await runtime.runStartupLifecycle();
+    await runtime.ensureReady();
     const app = createApp({ runtime });
     return app.listen(runtime.config.port, runtime.config.host, () => {
         console.log(`Server is running on http://${runtime.config.host}:${runtime.config.port}`);

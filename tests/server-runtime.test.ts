@@ -1,86 +1,47 @@
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createRuntime } from '../server/runtime.js';
+import { createRuntime } from './test-database.js';
 
-const rootDir = path.resolve('.');
-const fixturePath = path.join(rootDir, 'fixtures', 'demo-database.json');
-const temporaryDirectories: string[] = [];
-
-function makeDirectory(prefix: string): string {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-    temporaryDirectories.push(directory);
-    return directory;
+const directories: string[] = [];
+afterEach(() => { for (const dir of directories.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
+function runtimeFor() {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'billing-bootstrap-'));
+    directories.push(dataDir);
+    return createRuntime({ rootDir: path.resolve('.'), dataDir, env: { NODE_ENV: 'test', MIGRATE_FROM_JSON: '1' } });
 }
-
-function runtimeFor(dataDir: string) {
-    return createRuntime({
-        rootDir,
-        env: { NODE_ENV: 'test', DATA_DIR: dataDir, MIGRATE_FROM_JSON: '1' }
+describe('retryable serverless readiness', () => {
+    it('constructs without creating a database or its directory', () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'billing-no-side-effect-'));
+        directories.push(directory);
+        const dataDir = path.join(directory, 'not-created');
+        const runtime = createRuntime({ dataDir, env: { NODE_ENV: 'test' } });
+        expect(fs.existsSync(dataDir)).toBe(false);
+        runtime.close();
+        expect(fs.existsSync(dataDir)).toBe(false);
     });
-}
-
-function expectNoLiveSqlite(dataDir: string): void {
-    for (const suffix of ['', '-wal', '-shm']) {
-        expect(fs.existsSync(path.join(dataDir, `database.db${suffix}`))).toBe(false);
-    }
-    expect(fs.readdirSync(dataDir).some(filename => filename.includes('.database.bootstrap-'))).toBe(false);
-}
-
-async function runServer(dataDir: string): Promise<number | null> {
-    const child = spawn(process.execPath, [path.join(rootDir, 'node_modules/tsx/dist/cli.mjs'), 'server.ts'], {
-        cwd: rootDir,
-        env: {
-            ...process.env,
-            NODE_ENV: 'test',
-            HOST: '127.0.0.1',
-            PORT: '0',
-            DATA_DIR: dataDir,
-            DB_PATH: path.join(dataDir, 'database.json'),
-            SQLITE_PATH: path.join(dataDir, 'database.db'),
-            BACKUP_DIR: path.join(dataDir, 'backups'),
-            MIGRATE_FROM_JSON: '1'
-        },
-        stdio: 'ignore'
+    it('shares one readiness promise and retries malformed JSON without business writes', async () => {
+        const runtime = runtimeFor();
+        fs.writeFileSync(runtime.paths.dbPath, '{bad-json');
+        const first = runtime.ensureReady();
+        expect(runtime.ensureReady()).toBe(first);
+        await expect(first).rejects.toThrow(/bootstrap migration failed/);
+        expect((await runtime.client.execute('SELECT * FROM members')).rows).toHaveLength(0);
+        expect((await runtime.client.execute('SELECT * FROM backups')).rows).toHaveLength(0);
+        fs.copyFileSync('fixtures/demo-database.json', runtime.paths.dbPath);
+        await runtime.ensureReady();
+        expect((await runtime.readDB())?.currentMonth).toBe('2026/06');
+        expect(runtime.getReadiness().status).toBe('ready');
+        runtime.close();
     });
-    return await new Promise((resolve, reject) => {
-        child.once('error', reject);
-        child.once('exit', resolve);
-    });
-}
-
-afterEach(() => {
-    for (const directory of temporaryDirectories.splice(0)) {
-        fs.rmSync(directory, { recursive: true, force: true });
-    }
-});
-
-describe('atomic SQLite bootstrap', () => {
-    it('leaves no live database after malformed JSON process startup and succeeds on retry', async () => {
-        const dataDir = makeDirectory('billing-bootstrap-malformed-');
-        const jsonPath = path.join(dataDir, 'database.json');
-        fs.writeFileSync(jsonPath, '{malformed', 'utf8');
-
-        expect(await runServer(dataDir)).not.toBe(0);
-        expectNoLiveSqlite(dataDir);
-
-        fs.copyFileSync(fixturePath, jsonPath);
-        const runtime = runtimeFor(dataDir);
-        expect(() => runtime.initialize()).not.toThrow();
-        expect(runtime.readDB()?.currentMonth).toBe('2026/06');
-    });
-
-    it('throws on a SQLite constraint failure and removes the staged database', () => {
-        const dataDir = makeDirectory('billing-bootstrap-constraint-');
-        const invalid = JSON.parse(fs.readFileSync(fixturePath, 'utf8')) as {
-            members: Array<Record<string, unknown>>;
-        };
-        invalid.members[0]!.name = null;
-        fs.writeFileSync(path.join(dataDir, 'database.json'), JSON.stringify(invalid), 'utf8');
-
-        expect(() => runtimeFor(dataDir).initialize()).toThrow(/bootstrap migration failed/i);
-        expectNoLiveSqlite(dataDir);
+    it('rolls back every row when bootstrap violates a constraint', async () => {
+        const runtime = runtimeFor();
+        const invalid = JSON.parse(fs.readFileSync('fixtures/demo-database.json', 'utf8'));
+        invalid.members[0].name = null;
+        fs.writeFileSync(runtime.paths.dbPath, JSON.stringify(invalid));
+        await expect(runtime.ensureReady()).rejects.toThrow(/bootstrap migration failed/);
+        expect((await runtime.client.execute('SELECT * FROM members')).rows).toHaveLength(0);
+        runtime.close();
     });
 });

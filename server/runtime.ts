@@ -1,85 +1,36 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { isIP } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import SqliteDatabase from 'better-sqlite3';
+import type { Transaction } from '@libsql/client';
 import { findAccountingWarnings, normalizeDatabaseRelations } from '../lib/accounting.js';
-import {
-    backupSQLite,
-    getCanonicalPersistedFingerprint,
-    initSQLite,
-    loadFromSQLite,
-    migrateJsonToSQLite,
-    runMigrations,
-    saveToSQLite
-} from '../lib/db.js';
+import { openDatabase, loadFromConnection, runMigrations, withWriteTransaction, writeDatabase, verifyDatabase } from '../lib/db.js';
 import { getPublicOrigin, isGoogleOAuthConfigured } from '../lib/google-oauth.js';
-import { runLifecycleCatchUp } from '../lib/lifecycle.js';
+import { runLifecycleCatchUp, getSystemMonth } from '../lib/lifecycle.js';
 import { invalidateRAGIndex } from '../lib/rag.js';
-import type { AutomationProposal, Database } from '../src/types/billing.js';
+import type { Database } from '../src/types/billing.js';
 import { createBackupService } from './services/backup.js';
 import { createSessionRevocationStore } from './services/session-revocation.js';
+import { createProposalStore } from './services/proposals.js';
 
 const DEFAULT_ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-
 export type RuntimeOptions = {
-    rootDir?: string;
-    env?: Record<string, string | undefined>;
-    dataDir?: string;
-    dbPath?: string;
-    sqlitePath?: string;
-    backupDir?: string;
-    demoDbPath?: string;
-    distDir?: string;
-    migrationsDir?: string;
-    /** Test-only injection for exercising stage/commit/rollback failure branches. */
-    onlineBackup?: typeof backupSQLite;
+    rootDir?: string; env?: Record<string, string | undefined>; dataDir?: string;
+    dbPath?: string; sqlitePath?: string; backupDir?: string; demoDbPath?: string;
+    distDir?: string; migrationsDir?: string;
 };
-
-export type MutationOptions = {
-    reason?: string;
-    backup?: boolean;
-};
-
-export type RuntimeReadiness = {
-    status: 'starting' | 'ready' | 'blocked';
-    reason?: string;
-};
-
-export type MutationResult<T> = {
-    data: Database;
-    value: T;
-};
-
+export type MutationOptions = { reason?: string; backup?: boolean; afterSave?: (tx: Transaction) => Promise<void> };
+export type RuntimeReadiness = { status: 'starting' | 'ready' | 'blocked'; reason?: string };
+export type MutationResult<T> = { data: Database; value: T };
 export class MutationPersistenceError extends Error {
-    constructor(readonly cause: unknown) {
-        super('Database mutation persistence failed');
-        this.name = 'MutationPersistenceError';
-    }
+    constructor(readonly cause: unknown) { super('Database mutation persistence failed'); this.name = 'MutationPersistenceError'; }
 }
-
 export class DomainValidationError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = 'DomainValidationError';
-    }
+    constructor(message: string) { super(message); this.name = 'DomainValidationError'; }
 }
-
-type QueueJob<T> = {
-    execute: () => Promise<T>;
-    resolve: (result: T) => void;
-    reject: (error: unknown) => void;
-};
-
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-    return Boolean(
-        value
-        && (typeof value === 'object' || typeof value === 'function')
-        && typeof (value as { then?: unknown }).then === 'function'
-    );
+function isPromiseLike(value: unknown): boolean {
+    return Boolean(value && (typeof value === 'object' || typeof value === 'function') && typeof (value as { then?: unknown }).then === 'function');
 }
-
 type TrustedRange =
     | { version: 4; network: number; mask: number }
     | { version: 6; network: bigint; mask: bigint };
@@ -164,34 +115,6 @@ export function replacePersistedDatabase(target: Database, source: Database): vo
     else target.lifecycle = source.lifecycle;
 }
 
-function removeSqliteFiles(sqlitePath: string): void {
-    for (const suffix of ['', '-wal', '-shm']) {
-        fs.rmSync(`${sqlitePath}${suffix}`, { force: true });
-    }
-}
-
-function verifySqlite(sqlitePath: string): void {
-    const sqlite = new SqliteDatabase(sqlitePath, { fileMustExist: true });
-    try {
-        sqlite.pragma('wal_checkpoint(TRUNCATE)');
-        if (sqlite.pragma('integrity_check', { simple: true }) !== 'ok') {
-            throw new Error('SQLite integrity check failed');
-        }
-    } finally {
-        sqlite.close();
-    }
-    loadFromSQLite(sqlitePath);
-}
-
-function readTombstoneOriginalName(filename: string): string | null {
-    const prefix = '.backup-tombstone-';
-    if (!filename.startsWith(prefix) || !filename.endsWith('.db')) return null;
-    const encoded = filename.slice(prefix.length, -3);
-    const separator = encoded.lastIndexOf('-');
-    if (separator <= 0) return null;
-    return encoded.slice(0, separator);
-}
-
 export function createRuntime(options: RuntimeOptions = {}) {
     const rootDir = path.resolve(options.rootDir || DEFAULT_ROOT_DIR);
     const env = options.env || process.env;
@@ -202,323 +125,119 @@ export function createRuntime(options: RuntimeOptions = {}) {
     const demoDbPath = path.resolve(options.demoDbPath || path.join(rootDir, 'fixtures', 'demo-database.json'));
     const distDir = path.resolve(options.distDir || path.join(rootDir, 'dist'));
     const migrationsDir = path.resolve(options.migrationsDir || path.join(rootDir, 'lib', 'migrations'));
-    const authStatePath = path.join(dataDir, 'auth-state.json');
-    const onlineBackup = options.onlineBackup || backupSQLite;
+    const databaseUrl = env.TURSO_DATABASE_URL || sqlitePath;
+    // Construction stays side-effect free, including on read-only serverless filesystems.
+    const client = openDatabase(databaseUrl, env.TURSO_AUTH_TOKEN);
     const isProduction = env.NODE_ENV === 'production';
     const config = {
-        host: env.HOST || '127.0.0.1',
-        port: Number(env.PORT || 3000),
-        isProduction,
-        cookieSecure: env.COOKIE_SECURE === undefined
-            ? isProduction
-            : ['1', 'true', 'yes'].includes(String(env.COOKIE_SECURE).toLowerCase()),
+        host: env.HOST || '127.0.0.1', port: Number(env.PORT || 3000), isProduction,
+        cookieSecure: env.COOKIE_SECURE === undefined ? isProduction : ['1', 'true', 'yes'].includes(String(env.COOKIE_SECURE).toLowerCase()),
         maxBackups: 50
     };
-    const paths = { rootDir, dataDir, dbPath, sqlitePath, backupDir, demoDbPath, distDir, authStatePath };
-    const automationInbox: AutomationProposal[] = [];
-    const backup = createBackupService({
-        backupDir,
-        sqlitePath,
-        maxBackups: config.maxBackups,
-        onlineBackup
-    });
-    const sessionRevocation = createSessionRevocationStore(authStatePath);
-    const mutationQueue: Array<QueueJob<unknown>> = [];
-    let mutationWorkerRunning = false;
+    const paths = { rootDir, dataDir, dbPath, sqlitePath, backupDir, demoDbPath, distDir };
+    const backup = createBackupService({ client, maxBackups: config.maxBackups });
+    const sessionRevocation = createSessionRevocationStore(client);
+    const proposals = createProposalStore(client);
     let readiness: RuntimeReadiness = { status: 'starting' };
-
-    function markRuntimeFailure(error: unknown): void {
-        readiness = {
-            status: 'blocked',
-            reason: error instanceof Error ? error.message : String(error)
-        };
-    }
-
-    function domainIntegrityFailure(db: Database): string | null {
-        const blockingWarnings = findAccountingWarnings(db)
-            .filter(warning => warning.severity === 'high' || warning.severity === 'critical');
-        return blockingWarnings.length
-            ? blockingWarnings.slice(0, 3).map(warning => `${warning.code}: ${warning.detail}`).join('; ')
-            : null;
-    }
-
-    function isAuthConfigured(): boolean {
-        return Boolean(
-            env.APP_SESSION_SECRET
-            && isGoogleOAuthConfigured(env)
-            && (!isCloudBinding() || getPublicOrigin(env) !== null)
-        );
-    }
-
-    function isCloudBinding(): boolean {
-        return config.isProduction || config.host === '0.0.0.0' || config.host === '::';
-    }
-
-    function initializeFromJsonAtomically(sourcePath: string): void {
-        const stagedPath = path.join(dataDir, `.database.bootstrap-${crypto.randomUUID()}.db`);
-        removeSqliteFiles(stagedPath);
-        try {
-            initSQLite(stagedPath);
-            if (!migrateJsonToSQLite(sourcePath, stagedPath)) {
-                throw new Error(`SQLite bootstrap migration failed: ${sourcePath}`);
-            }
-            verifySqlite(stagedPath);
-            removeSqliteFiles(sqlitePath);
-            fs.renameSync(stagedPath, sqlitePath);
-            removeSqliteFiles(stagedPath);
-        } catch (error) {
-            removeSqliteFiles(stagedPath);
-            removeSqliteFiles(sqlitePath);
-            throw error;
-        }
-    }
-
-    function resolveTombstones(db: Database): void {
-        for (const filename of fs.readdirSync(backupDir)) {
-            const originalFilename = readTombstoneOriginalName(filename);
-            if (!originalFilename) continue;
-
-            const tombstonePath = path.join(backupDir, filename);
-            const hasMatchingLedger = db.ledger.entries.some(entry => {
-                if (entry.type !== 'backup.deleted') return false;
-                const payload = entry.payload as Record<string, unknown> | undefined;
-                return payload?.tombstone === filename && payload.filename === originalFilename;
-            });
-            if (hasMatchingLedger) {
-                removeSqliteFiles(tombstonePath);
-                continue;
-            }
-
-            const originalPath = path.join(backupDir, originalFilename);
-            if (fs.existsSync(originalPath)) {
-                throw new Error(`Unmatched backup tombstone requires review: ${filename}`);
-            }
-            fs.renameSync(tombstonePath, originalPath);
-        }
-    }
-
-    async function migrateExistingSQLiteAtomically(): Promise<void> {
-        const stagePath = path.join(dataDir, `.database-migration-${crypto.randomUUID()}.db`);
-        const safetyPath = path.join(backupDir, `.migration-safety-${crypto.randomUUID()}.db`);
-        let safetyVerified = false;
-        let committed = false;
-
-        removeSqliteFiles(stagePath);
-        removeSqliteFiles(safetyPath);
-        try {
-            await onlineBackup(sqlitePath, stagePath);
-            runMigrations(stagePath, migrationsDir);
-            verifySqlite(stagePath);
-            const stagedDb = loadFromSQLite(stagePath);
-            const integrityFailure = domainIntegrityFailure(stagedDb);
-            if (integrityFailure) {
-                throw new Error(`Staged migration domain validation failed: ${integrityFailure}`);
-            }
-            const expectedFingerprint = getCanonicalPersistedFingerprint(stagedDb);
-
-            await onlineBackup(sqlitePath, safetyPath);
-            verifySqlite(safetyPath);
-            safetyVerified = true;
-
-            await onlineBackup(stagePath, sqlitePath);
-            verifySqlite(sqlitePath);
-            const committedDb = loadFromSQLite(sqlitePath);
-            if (getCanonicalPersistedFingerprint(committedDb) !== expectedFingerprint) {
-                throw new Error('Post-migration live verification mismatch');
-            }
-            committed = true;
-        } catch (error) {
-            if (safetyVerified) {
-                try {
-                    const safetyFingerprint = getCanonicalPersistedFingerprint(loadFromSQLite(safetyPath));
-                    await onlineBackup(safetyPath, sqlitePath);
-                    verifySqlite(sqlitePath);
-                    if (getCanonicalPersistedFingerprint(loadFromSQLite(sqlitePath)) !== safetyFingerprint) {
-                        throw new Error('Migration rollback fingerprint mismatch', { cause: error });
-                    }
-                    removeSqliteFiles(safetyPath);
-                } catch (rollbackError) {
-                    throw new Error(
-                        `SQLite migration failed and rollback failed: ${String(error)}; ${String(rollbackError)}`,
-                        { cause: rollbackError }
-                    );
-                }
-            }
-            throw error;
-        } finally {
-            removeSqliteFiles(stagePath);
-            if (committed) removeSqliteFiles(safetyPath);
-        }
-    }
-
-    async function initializeAtomic(): Promise<void> {
-        try {
-            fs.mkdirSync(dataDir, { recursive: true });
-            fs.mkdirSync(backupDir, { recursive: true });
-            const liveExists = fs.existsSync(sqlitePath) && fs.statSync(sqlitePath).size > 0;
-
-            if (!liveExists && env.MIGRATE_FROM_JSON === '1') {
-                const sourcePath = fs.existsSync(dbPath) ? dbPath : demoDbPath;
-                if (!fs.existsSync(sourcePath)) {
-                    removeSqliteFiles(sqlitePath);
-                    throw new Error(`SQLite bootstrap source not found: ${sourcePath}`);
-                }
-                initializeFromJsonAtomically(sourcePath);
-            } else if (liveExists) {
-                await migrateExistingSQLiteAtomically();
-            } else {
-                initSQLite(sqlitePath);
-            }
-
-            const db = readDB();
-            if (!db) throw new Error('Database read failed during initialization');
-            resolveTombstones(db);
-            const integrityFailure = domainIntegrityFailure(db);
-            if (integrityFailure) {
-                throw new Error(`Domain integrity blocked startup: ${integrityFailure}`);
-            }
-            readiness = { status: 'ready' };
-        } catch (error) {
-            markRuntimeFailure(error);
-            throw error;
-        }
-    }
-
-    function initialize(): void {
-        try {
-            fs.mkdirSync(dataDir, { recursive: true });
-            fs.mkdirSync(backupDir, { recursive: true });
-            const liveExists = fs.existsSync(sqlitePath) && fs.statSync(sqlitePath).size > 0;
-
-            if (!liveExists && env.MIGRATE_FROM_JSON === '1') {
-                const sourcePath = fs.existsSync(dbPath) ? dbPath : demoDbPath;
-                if (!fs.existsSync(sourcePath)) {
-                    removeSqliteFiles(sqlitePath);
-                    throw new Error(`SQLite bootstrap source not found: ${sourcePath}`);
-                }
-                initializeFromJsonAtomically(sourcePath);
-            } else {
-                initSQLite(sqlitePath);
-            }
-
-            const db = readDB();
-            if (!db) throw new Error('Database read failed during initialization');
-            const integrityFailure = domainIntegrityFailure(db);
-            if (integrityFailure) {
-                throw new Error(`Domain integrity blocked startup: ${integrityFailure}`);
-            }
-            readiness = { status: 'ready' };
-        } catch (error) {
-            markRuntimeFailure(error);
-            throw error;
-        }
-    }
-
-    function readDB(): Database | null {
-        try {
-            const db = loadFromSQLite(sqlitePath);
-            return db;
-        } catch (error) {
-            markRuntimeFailure(error);
-            console.error('Error reading database from SQLite:', error);
-            return null;
-        }
-    }
-
-    async function executeMutation<T>(mutator: (freshDb: Database) => T, options: MutationOptions): Promise<MutationResult<T>> {
-        const freshDb = readDB();
-        if (!freshDb) throw new Error('Database error');
-
-        const value = mutator(freshDb);
-        if (isPromiseLike(value)) {
-            throw new Error('Mutation callback must be synchronous');
-        }
-
-        normalizeDatabaseRelations(freshDb);
-        const integrityFailure = domainIntegrityFailure(freshDb);
-        if (integrityFailure) {
-            throw new DomainValidationError(`Domain validation failed: ${integrityFailure}`);
-        }
-        try {
-            if (options.backup !== false && !await backup.backupDB()) {
-                throw new Error('Database backup failed');
-            }
-            saveToSQLite(sqlitePath, freshDb);
-        } catch (error) {
-            markRuntimeFailure(error);
-            throw new MutationPersistenceError(error);
-        }
-        invalidateRAGIndex();
-        return { data: freshDb, value };
-    }
-
+    let readyPromise: Promise<void> | undefined;
+    let queue: Promise<unknown> = Promise.resolve();
     function enqueueExclusive<T>(operation: () => Promise<T>): Promise<T> {
-        return new Promise((resolve, reject) => {
-            mutationQueue.push({
-                execute: operation,
-                resolve: resolve as (result: unknown) => void,
-                reject
-            });
-            void drainMutationQueue();
-        });
+        const result = queue.then(operation);
+        queue = result.catch(() => undefined);
+        return result;
     }
-
-    async function drainMutationQueue(): Promise<void> {
-        if (mutationWorkerRunning) return;
-        mutationWorkerRunning = true;
+    function markRuntimeFailure(error: unknown): void {
+        readiness = { status: 'blocked', reason: error instanceof Error ? error.message : String(error) };
+        readyPromise = undefined;
+    }
+    function assertDomainIntegrity(db: Database): void {
+        const warnings = findAccountingWarnings(db).filter(w => w.severity === 'high' || w.severity === 'critical');
+        if (warnings.length) throw new DomainValidationError(`Domain validation failed: ${warnings.slice(0, 3).map(w => `${w.code}: ${w.detail}`).join('; ')}`);
+    }
+    function isCloudBinding(): boolean { return config.isProduction || config.host === '0.0.0.0' || config.host === '::'; }
+    function isAuthConfigured(): boolean {
+        return Boolean(env.APP_SESSION_SECRET && isGoogleOAuthConfigured(env) && (!isCloudBinding() || getPublicOrigin(env) !== null));
+    }
+    async function executeMutation<T>(mutator: (freshDb: Database) => T, options: MutationOptions): Promise<MutationResult<T>> {
+        let callbackFailed = false;
         try {
-            while (mutationQueue.length > 0) {
-                const job = mutationQueue.shift()!;
+            const result = await withWriteTransaction(client, async tx => {
+                const previous = await loadFromConnection(tx);
+                const freshDb = structuredClone(previous);
+                let value: T;
                 try {
-                    job.resolve(await job.execute());
+                    value = mutator(freshDb);
+                    if (isPromiseLike(value)) throw new Error('Mutation callback must be synchronous');
+                    normalizeDatabaseRelations(freshDb);
+                    assertDomainIntegrity(freshDb);
+                } catch (error) { callbackFailed = true; throw error; }
+                try {
+                    if (options.backup !== false) await backup.insertBackup(tx, previous, options.reason || 'mutation');
+                    await writeDatabase(tx, previous, freshDb);
+                    if (options.afterSave) await options.afterSave(tx);
+                    await verifyDatabase(tx, freshDb);
                 } catch (error) {
-                    job.reject(error);
+                    // Preserve route conflicts, including a lost proposal compare-and-swap.
+                    if (error && typeof error === 'object' && 'status' in error) throw error;
+                    throw new MutationPersistenceError(error);
                 }
-            }
-        } finally {
-            mutationWorkerRunning = false;
-            if (mutationQueue.length > 0) void drainMutationQueue();
+                return { data: freshDb, value };
+            });
+            invalidateRAGIndex();
+            return result;
+        } catch (error) {
+            if (callbackFailed || (error && typeof error === 'object' && 'status' in error)) throw error;
+            const failure = error instanceof MutationPersistenceError ? error : new MutationPersistenceError(error);
+            markRuntimeFailure(failure);
+            throw failure;
         }
     }
-
-    function mutateDB<T>(mutator: (freshDb: Database) => T, options: MutationOptions = {}): Promise<MutationResult<T>> {
-        return enqueueExclusive(() => executeMutation(mutator, options));
+    function ensureReady(): Promise<void> {
+        if (readyPromise) return readyPromise;
+        readyPromise = (async () => {
+            await runMigrations(client, migrationsDir);
+            if (env.MIGRATE_FROM_JSON === '1') {
+                await withWriteTransaction(client, async tx => {
+                    const existing = await loadFromConnection(tx);
+                    const businessCount = existing.members.length + existing.platforms.length + existing.payments.length + existing.ledger.entries.length + existing.history.length + existing.subscriptions.length + existing.tempCharges.length;
+                    const hasMetadata = (await tx.execute('SELECT key FROM metadata LIMIT 1')).rows.length > 0;
+                    if (businessCount || hasMetadata) return;
+                    const source = fs.existsSync(dbPath) ? dbPath : demoDbPath;
+                    try {
+                        const next = normalizeDatabaseRelations(JSON.parse(fs.readFileSync(source, 'utf8')));
+                        assertDomainIntegrity(next);
+                        await writeDatabase(tx, existing, next);
+                        await verifyDatabase(tx, next);
+                    } catch (error) { throw new Error('SQLite bootstrap migration failed', { cause: error }); }
+                });
+            }
+            const db = await loadFromConnection(client);
+            assertDomainIntegrity(db);
+            if (env.NODE_ENV !== 'test' && db.currentMonth < getSystemMonth()) await runStartupLifecycle();
+            readiness = { status: 'ready' };
+        })().catch(error => { readyPromise = undefined; markRuntimeFailure(error); throw error; });
+        return readyPromise;
     }
-
+    async function readDB(): Promise<Database | null> {
+        try { return await loadFromConnection(client); }
+        catch (error) { markRuntimeFailure(error); return null; }
+    }
+    function mutateDB<T>(mutator: (db: Database) => T, mutationOptions: MutationOptions = {}): Promise<MutationResult<T>> {
+        return enqueueExclusive(async () => { await ensureReady(); return executeMutation(mutator, mutationOptions); });
+    }
     async function runStartupLifecycle(): Promise<void> {
         if (env.NODE_ENV === 'test') return;
-        try {
-            const { data, value: results } = await mutateDB(db => {
-                const lifecycleResults = runLifecycleCatchUp(db);
-                const blocked = lifecycleResults.find(result => result.blocked);
-                if (blocked) throw new Error(`Lifecycle blocked startup: ${blocked.blockedReason || 'integrity check failed'}`);
-                return lifecycleResults;
-            }, { reason: 'startup.lifecycle' });
-            console.log(`[lifecycle] startup catch-up: advanced ${results.filter(result => result.advanced).length} month(s) to ${data.currentMonth}`);
-        } catch (error) {
-            markRuntimeFailure(error);
-            throw error;
-        }
+        await executeMutation(db => {
+            const results = runLifecycleCatchUp(db);
+            const blocked = results.find(result => result.blocked);
+            if (blocked) throw new Error(`Lifecycle blocked startup: ${blocked.blockedReason || 'integrity check failed'}`);
+        }, { reason: 'startup.lifecycle' });
     }
-
     return {
-        env,
-        config,
-        paths,
-        automationInbox,
-        initialize,
-        readDB,
-        initializeAtomic,
-        mutateDB,
-        enqueueExclusive,
-        getReadiness: () => ({ ...readiness }),
-        runStartupLifecycle,
-        isAuthConfigured,
-        isCloudBinding,
-        invalidateRAGIndex,
-        ...sessionRevocation,
-        ...backup
+        env, config, paths, client, ensureReady, initialize: ensureReady, initializeAtomic: ensureReady,
+        readDB, mutateDB, enqueueExclusive, getReadiness: () => ({ ...readiness }), runStartupLifecycle,
+        isAuthConfigured, isCloudBinding, invalidateRAGIndex, close: () => client.close(),
+        ...sessionRevocation, ...backup, ...proposals
     };
 }
-
 export type Runtime = ReturnType<typeof createRuntime>;

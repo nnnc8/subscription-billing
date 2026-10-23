@@ -3,23 +3,20 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { findAccountingWarnings } from '../lib/accounting.js';
-import { initSQLite, loadFromSQLite, saveToSQLite } from '../lib/db.js';
-import { createRuntime } from '../server/runtime.js';
+import { initSQLite, loadFromSQLite, saveToSQLite } from './test-database.js';
+import { createRuntime } from './test-database.js';
 import type { Database } from '../src/types/billing.js';
-
 const fixturePath = path.resolve('fixtures/demo-database.json');
 const temporaryDirectories: string[] = [];
-
 function fixtureDatabase(): Database {
     return JSON.parse(fs.readFileSync(fixturePath, 'utf8')) as Database;
 }
-
-function testRuntime(): ReturnType<typeof createRuntime> {
+async function testRuntime(): Promise<ReturnType<typeof createRuntime>> {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'billing-domain-validation-'));
     temporaryDirectories.push(dataDir);
     const sqlitePath = path.join(dataDir, 'database.db');
-    initSQLite(sqlitePath);
-    saveToSQLite(sqlitePath, fixtureDatabase());
+    (await initSQLite(sqlitePath));
+    (await saveToSQLite(sqlitePath, fixtureDatabase()));
     const runtime = createRuntime({
         rootDir: path.resolve('.'),
         dataDir,
@@ -27,16 +24,14 @@ function testRuntime(): ReturnType<typeof createRuntime> {
         backupDir: path.join(dataDir, 'backups'),
         env: { NODE_ENV: 'test', MIGRATE_FROM_JSON: '0' }
     });
-    runtime.initialize();
+    (await runtime.initialize());
     return runtime;
 }
-
 afterEach(() => {
     for (const directory of temporaryDirectories.splice(0)) {
         fs.rmSync(directory, { recursive: true, force: true });
     }
 });
-
 describe('deterministic domain validation', () => {
     it('reports IDs, references, calendar dates, cycles, ordering and active duplicates', () => {
         const db = fixtureDatabase();
@@ -57,7 +52,6 @@ describe('deterministic domain validation', () => {
         });
         db.payments[0]!.date = '2026-02-30';
         db.payments[0]!.cycle = '202605';
-
         const codes = new Set(findAccountingWarnings(db).map(warning => warning.code));
         expect([...codes]).toEqual(expect.arrayContaining([
             'duplicate_member_id',
@@ -69,13 +63,12 @@ describe('deterministic domain validation', () => {
             'duplicate_active_subscription'
         ]));
     });
-
     it('rejects a fresh-state mutation that would move payment data outside the active month', async () => {
-        const runtime = testRuntime();
-        const before = loadFromSQLite(runtime.paths.sqlitePath).payments[0]!.cycle;
+        const runtime = (await testRuntime());
+        const before = (await loadFromSQLite(runtime.paths.sqlitePath)).payments[0]!.cycle;
         await expect(runtime.mutateDB(db => {
             db.payments[0]!.cycle = '202605';
         })).rejects.toThrow(/payment_cycle_mismatch/);
-        expect(loadFromSQLite(runtime.paths.sqlitePath).payments[0]!.cycle).toBe(before);
+        expect((await loadFromSQLite(runtime.paths.sqlitePath)).payments[0]!.cycle).toBe(before);
     });
 });
