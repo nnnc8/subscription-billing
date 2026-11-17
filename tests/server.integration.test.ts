@@ -7,7 +7,7 @@ import { monthToCode } from '../lib/accounting.js';
 import { SESSION_COOKIE_NAME, createSessionCookieValue } from '../lib/auth.js';
 import { getSystemMonth } from '../lib/lifecycle.js';
 import { createApp } from '../server/app.js';
-import type { Database } from '../src/types/billing.js';
+import type { Database, Subscription } from '../src/types/billing.js';
 import { MutationPersistenceError, createRuntime, getCanonicalPersistedFingerprint, type Runtime, type RuntimeOptions } from './test-database.js';
 const rootDir = path.resolve('.');
 const fixturePath = path.join(rootDir, 'fixtures', 'demo-database.json');
@@ -330,6 +330,38 @@ describe('native fetch integration across route groups', () => {
             const again = await fetch(`${baseUrl}/api/member/m_alpha`, { method: 'DELETE', headers: { Cookie: cookie } });
             expect(again.status).toBe(409);
             expect(await json(again)).toEqual({ error: '成員已停用' });
+        });
+    });
+    it('refuses subscriptions that would overlap from a later month, and saves marked seats and handovers', async () => {
+        const runtime = (await createTestRuntime());
+        await withApp(runtime, async (baseUrl, cookie) => {
+            const save = (subscriptions: Subscription[]) => fetch(`${baseUrl}/api/update-subscriptions`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ subscriptions })
+            });
+            const before = (await runtime.readDB())!;
+            const alphaVideo = before.subscriptions.find(item => item.id === 's_alpha_video')!;
+            const withAlphaVideo = (change: Partial<Subscription>) => before.subscriptions.map(item => item.id === alphaVideo.id ? { ...item, ...change } : item);
+            // Two months after the fixture's 2026/06; s_alpha_video has no exit month.
+            const later: Subscription = { ...alphaVideo, id: 's_alpha_video_2026_08', startMonth: '2026/08' };
+            const refused = await save([...before.subscriptions, later]);
+            expect(refused.status).toBe(400);
+            expect((await json(refused)).error).toMatch(/^訂閱未儲存：2026\/08 起.*Member Alpha 在 2026\/08 有 2 筆 Shared Video/);
+            // An overlap in the open month gets the same answer instead of an internal error.
+            const now = await save([...before.subscriptions, { ...later, id: 's_alpha_video_2026_06', startMonth: '2026/06' }]);
+            expect(now.status).toBe(400);
+            expect((await json(now)).error).toMatch(/^訂閱未儲存：2026\/06 起/);
+            expect(getCanonicalPersistedFingerprint((await runtime.readDB())!)).toBe(getCanonicalPersistedFingerprint(before));
+            expect(runtime.getReadiness().status).toBe('ready');
+
+            const seats = await save([...withAlphaVideo({ allowDuplicate: true, seatLabel: 'Seat A' }), { ...later, allowDuplicate: true, seatLabel: 'Seat B' }]);
+            expect(seats.status).toBe(200);
+            expect((await runtime.readDB())!.subscriptions.find(item => item.id === later.id)).toMatchObject({ startMonth: '2026/08', allowDuplicate: true, seatLabel: 'Seat B' });
+            const handover = await save([...withAlphaVideo({ exitMonth: '2026/07' }), later]);
+            expect(handover.status).toBe(200);
+            expect((await runtime.readDB())!.subscriptions.filter(item => item.memberId === 'm_alpha').map(item => [item.id, item.startMonth, item.exitMonth, Boolean(item.seatLabel)])).toEqual([
+                ['s_alpha_video', '2026/01', '2026/07', false],
+                ['s_alpha_video_2026_08', '2026/08', undefined, false]
+            ]);
         });
     });
 });

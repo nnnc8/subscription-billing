@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+    findFirstDuplicateSubscriptionMonth,
     isMemberRecord,
     isPlatformRecord,
     MONTH_RE,
@@ -159,6 +160,18 @@ function summarizeSettingsBundle(
     };
 }
 
+/**
+ * Refuses subscriptions that bill one member twice for one platform, in the open month or in a
+ * later month. The save-time audit sees only the open month, so such a seat would pass and then
+ * fail the month close, and every catch-up after it, once its month arrives.
+ */
+function assertNoDuplicateSubscriptions(db: Database): void {
+    const duplicate = findFirstDuplicateSubscriptionMonth(db);
+    if (!duplicate) return;
+    const details = duplicate.warnings.map(warning => warning.detail).join('；');
+    throw httpError(400, `訂閱未儲存：${duplicate.month} 起同一成員同一平台重複啟用（${details}）。請調整起算月份，或先為既有訂閱設定退出月份。`);
+}
+
 /** Sets exitMonth to last month on matching subscriptions still billed this month or later. */
 function closeArchivedSubscriptions(db: Database, belongs: (subscription: Subscription) => boolean): number {
     const stopMonth = previousMonthString(db.currentMonth) || db.currentMonth;
@@ -260,6 +273,7 @@ export function createSettingsEntitiesRouter(runtime: Runtime): Router {
         await mutateAndSend(runtime, res, db => {
             assertConfigVersion(db, baseVersion);
             db.subscriptions = nextSubscriptions;
+            assertNoDuplicateSubscriptions(db);
             return {
                 event: {
                     type: 'subscriptions.updated',
