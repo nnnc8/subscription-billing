@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findAccountingWarnings } from '../lib/accounting.js';
-import { getCanonicalPersistedFingerprint, loadFromConnection, openDatabase, runMigrations, verifyDatabase, withWriteTransaction, writeDatabase } from '../lib/db.js';
+import { getCanonicalPersistedFingerprint, loadFromConnection, openDatabase, readMetadataRows, replaceMetadataRows, runMigrations, verifyDatabase, withWriteTransaction, writeDatabase } from '../lib/db.js';
 import { createBackupService } from '../server/services/backup.js';
 
 export type MigrationOptions = { sourcePath: string; targetUrl: string; authToken?: string; force?: boolean; dryRun?: boolean };
@@ -16,8 +16,13 @@ export async function migrateToTurso(options: MigrationOptions) {
         if ((fs.existsSync(targetPath) ? fs.realpathSync(targetPath) : path.resolve(targetPath)) === fs.realpathSync(sourcePath)) throw new Error('Source and target must be different databases');
     }
     const source = openDatabase(sourcePath);
-    const data = await (async () => {
-        try { return await loadFromConnection(source); }
+    const { data, metadataRows } = await (async () => {
+        try {
+            // One read transaction, so the raw metadata rows come from the same snapshot as the data.
+            const tx = await source.transaction('read');
+            try { return { data: await loadFromConnection(tx), metadataRows: await readMetadataRows(tx) }; }
+            finally { tx.close(); }
+        }
         finally { source.close(); }
     })();
     if (findAccountingWarnings(data).some(warning => warning.severity === 'high' || warning.severity === 'critical')) throw new Error('Source database failed domain validation');
@@ -38,10 +43,14 @@ export async function migrateToTurso(options: MigrationOptions) {
             if (occupied && !options.force) throw new Error('Target contains business data; use --force only after reviewing a backup');
             if (occupied) await createBackupService({ client: target }).insertBackup(tx, previous, 'migration.safety');
             await writeDatabase(tx, previous, data);
+            // Every source metadata row, also those equal to a code default, which writeDatabase skips.
+            await replaceMetadataRows(tx, metadataRows);
             await verifyDatabase(tx, data);
         });
         // Independently verify the committed state, not only the transaction's own snapshot.
         if (getCanonicalPersistedFingerprint(await loadFromConnection(target)) !== fingerprint) throw new Error('Committed target fingerprint mismatch');
+        // The fingerprint reads metadata through defaults, so also compare the stored rows.
+        if (JSON.stringify(await readMetadataRows(target)) !== JSON.stringify(metadataRows)) throw new Error('Committed target metadata mismatch');
         return { ...summary, imported: true };
     } finally { target.close(); }
 }

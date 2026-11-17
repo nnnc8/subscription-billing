@@ -196,6 +196,31 @@ function metadata(data: Database): Record<string, string> {
   };
 }
 
+/** A metadata row as stored; the value column is nullable TEXT. */
+export type RawMetadataRow = { key: string; value: string | null };
+
+/** The metadata table as stored, in key order, including values that equal a loader default. */
+export async function readMetadataRows(db: DatabaseConnection): Promise<RawMetadataRow[]> {
+  return (await db.execute('SELECT key, value FROM metadata ORDER BY key')).rows.map(row => {
+    const value = row.value;
+    if (value !== null && typeof value !== 'string') throw new Error(`Metadata ${String(row.key)} is not text`);
+    return { key: String(row.key), value };
+  });
+}
+
+/**
+ * Leaves exactly `rows` in the metadata table, so an import keeps every source row as stored.
+ * writeDatabase skips a value that equals the previous one, and an empty target loads as the
+ * defaults, so on its own it would not copy a source row such as ledgerVersion=1.
+ */
+export async function replaceMetadataRows(tx: Transaction, rows: readonly RawMetadataRow[]): Promise<void> {
+  const keys = rows.map(row => row.key);
+  await tx.batch([
+    keys.length ? { sql: `DELETE FROM metadata WHERE key NOT IN (${keys.map(() => '?').join(',')})`, args: keys } : 'DELETE FROM metadata',
+    ...rows.map(row => ({ sql: 'INSERT INTO metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', args: [row.key, row.value] }))
+  ]);
+}
+
 type RowRepository<T> = { changes(previous: T[], next: T[]): InStatement[] };
 const byId = (row: { id: string }) => row.id;
 
