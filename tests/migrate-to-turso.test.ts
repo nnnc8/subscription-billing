@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Request } from 'express';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { appendLedgerEvent, ensureHistorySeals, findAccountingWarnings, normalizeDatabaseRelations } from '../lib/accounting.js';
@@ -227,6 +227,80 @@ describe('metadata rows', () => {
             await client.executeMultiple("CREATE TRIGGER rewrite_ledger_version AFTER INSERT ON metadata WHEN NEW.key='ledgerVersion' BEGIN UPDATE metadata SET value='1.0' WHERE key='ledgerVersion'; END;");
         } finally { client.close(); }
         await expect(migrateToTurso(options)).rejects.toThrow(/Committed target metadata mismatch/);
+    });
+});
+describe('lifecycle catch-up before the import', () => {
+    afterEach(() => { vi.useRealTimers(); });
+    const highRisk = (data: Database) => findAccountingWarnings(data).filter(warning => warning.severity === 'high' || warning.severity === 'critical');
+    /** Mid-month in Asia/Taipei, so runLifecycleCatchUp closes every month before `month`. */
+    function clockAt(month: string): void {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date(`${month.replace('/', '-')}-15T04:00:00.000Z`));
+    }
+    /** A source holding `data`, and a target file that a refused import must never create. */
+    async function sourceFile(data: Database) {
+        const directory = temporaryDirectory();
+        const sourcePath = path.join(directory, 'source.db');
+        await runMigrations(sourcePath);
+        await saveToSQLite(sourcePath, data);
+        return { sourcePath, targetUrl: pathToFileURL(path.join(directory, 'target.db')).href };
+    }
+    async function expectRefused(options: { sourcePath: string; targetUrl: string }, reason: RegExp): Promise<void> {
+        await expect(migrateToTurso({ ...options, dryRun: true })).rejects.toThrow(reason);
+        await expect(migrateToTurso(options)).rejects.toThrow(reason);
+        expect(fs.existsSync(fileURLToPath(options.targetUrl))).toBe(false);
+    }
+
+    it('refuses a source whose open month is already sealed, and still imports the fixture a month later', async () => {
+        const sealed = normalizeDatabaseRelations(JSON.parse(fs.readFileSync('fixtures/demo-database.json', 'utf8')) as Database);
+        // Close 2026/06 and reopen it, as if the month had been closed twice.
+        clockAt('2026/06');
+        expect(advanceMonthOnce(sealed, '2026/07')).toMatchObject({ advanced: true, to: '2026/07' });
+        vi.useRealTimers();
+        sealed.currentMonth = '2026/06';
+        // The existing domain check lets it through: being sealed already is only a medium warning.
+        expect(highRisk(sealed)).toEqual([]);
+        expect(findAccountingWarnings(sealed).map(warning => warning.code)).toContain('current_month_already_in_history');
+        const refused = await sourceFile(sealed);
+        const clean = await prepare();
+
+        clockAt('2026/07');
+        await expectRefused(refused, /2026\/06.*已存在於歷史封存/);
+        expect((await migrateToTurso(clean)).imported).toBe(true);
+        // The import writes the source as it is, not the copy the check closed.
+        const source = await loadFromSQLite(clean.sourcePath);
+        const target = await loadFromSQLite(clean.targetUrl);
+        expect(getCanonicalPersistedFingerprint(target)).toBe(getCanonicalPersistedFingerprint(source));
+        expect(target.currentMonth).toBe('2026/06');
+        expect(target.history).toEqual([]);
+    });
+
+    it('refuses subscriptions that overlap only from next month, and still imports the real-shaped ledger unchanged', async () => {
+        const ledger = realShapedLedger();
+        const refused = await sourceFile(ledger);
+        // Written straight into the source: Member 1 gets a second Video Plus seat from 2026/12.
+        const client = openDatabase(refused.sourcePath);
+        try {
+            await client.execute({
+                sql: 'INSERT INTO subscriptions (id, memberId, platformId, memberName, platformName, startMonth, exitMonth, seatLabel, allowDuplicate) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 0)',
+                args: ['s_15', 'm_1', 'p_video', 'Member 1', 'Video Plus', '2026/12']
+            });
+        } finally { client.close(); }
+        expect(highRisk(await loadFromSQLite(refused.sourcePath))).toEqual([]);
+        const clean = await mainEraSource(ledger);
+
+        clockAt('2026/12');
+        await expectRefused(refused, /2026\/12.*duplicate_active_subscription/);
+        const result = await migrateToTurso(clean);
+        expect(result.imported).toBe(true);
+        const source = await loadFromSQLite(clean.sourcePath);
+        const target = await loadFromSQLite(clean.targetUrl);
+        expect(getCanonicalPersistedFingerprint(target)).toBe(getCanonicalPersistedFingerprint(source));
+        expect(result.fingerprintSha256).toBe(sha256(getCanonicalPersistedFingerprint(source)));
+        expect(target.currentMonth).toBe('2026/11');
+        expect(target.history).toHaveLength(9);
+        expect(target.ledger.entries).toHaveLength(26);
+        expect(target.subscriptions.filter(subscription => subscription.allowDuplicate && subscription.seatLabel).map(subscription => subscription.id)).toEqual(['s_11', 's_12']);
     });
 });
 describe('session cutoff', () => {

@@ -2,12 +2,28 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findAccountingWarnings } from '../lib/accounting.js';
+import { findAccountingWarnings, normalizeDatabaseRelations } from '../lib/accounting.js';
 import { getCanonicalPersistedFingerprint, loadFromConnection, openDatabase, readMetadataRows, replaceMetadataRows, runMigrations, verifyDatabase, withWriteTransaction, writeDatabase } from '../lib/db.js';
+import { runLifecycleCatchUp } from '../lib/lifecycle.js';
 import { createBackupService } from '../server/services/backup.js';
 import { raiseSessionCutoff } from '../server/services/session-revocation.js';
+import type { Database } from '../src/types/billing.js';
 
 export type MigrationOptions = { sourcePath: string; targetUrl: string; authToken?: string; force?: boolean; dryRun?: boolean };
+
+/**
+ * The app closes every month up to the clock month on its first request and then checks the
+ * result, failing every request while either step fails. Run the same steps on a copy, so a
+ * source the app could not open is refused. The import still writes the source unchanged.
+ */
+function assertLifecycleCatchUp(data: Database): void {
+    const caughtUp = structuredClone(data);
+    const blocked = runLifecycleCatchUp(caughtUp).find(result => result.blocked);
+    if (blocked) throw new Error(`Lifecycle catch-up is blocked at ${caughtUp.currentMonth}: ${blocked.blockedReason || 'integrity check failed'}`);
+    normalizeDatabaseRelations(caughtUp);
+    const warnings = findAccountingWarnings(caughtUp).filter(warning => warning.severity === 'high' || warning.severity === 'critical');
+    if (warnings.length) throw new Error(`Domain validation fails in ${caughtUp.currentMonth} after the lifecycle catch-up: ${warnings.slice(0, 3).map(warning => `${warning.code}: ${warning.detail}`).join('; ')}`);
+}
 export async function migrateToTurso(options: MigrationOptions) {
     const sourcePath = path.resolve(options.sourcePath);
     if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) throw new Error('Source database does not exist');
@@ -27,6 +43,7 @@ export async function migrateToTurso(options: MigrationOptions) {
         finally { source.close(); }
     })();
     if (findAccountingWarnings(data).some(warning => warning.severity === 'high' || warning.severity === 'critical')) throw new Error('Source database failed domain validation');
+    assertLifecycleCatchUp(data);
     const fingerprint = getCanonicalPersistedFingerprint(data);
     const summary = {
         imported: false, dryRun: Boolean(options.dryRun),
