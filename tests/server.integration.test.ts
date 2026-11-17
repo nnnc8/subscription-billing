@@ -266,6 +266,28 @@ describe('native fetch integration across route groups', () => {
             expect(remaining).not.toContain(oldest);
         });
     });
+    it('restores a backup over HTTP after subscriptions[0] was removed', async () => {
+        const runtime = (await createTestRuntime());
+        await withApp(runtime, async (baseUrl, cookie) => {
+            const created = await fetch(`${baseUrl}/api/backups/create`, { method: 'POST', headers: { Cookie: cookie } });
+            const { filename } = await json(created) as { filename: string };
+            const before = (await runtime.readDB())!;
+            const headers = { 'Content-Type': 'application/json', Cookie: cookie };
+            const update = await fetch(`${baseUrl}/api/update-subscriptions`, {
+                method: 'POST', headers, body: JSON.stringify({ subscriptions: before.subscriptions.slice(1) })
+            });
+            expect(update.status).toBe(200);
+            expect((await runtime.readDB())!.subscriptions.map(item => item.id)).toEqual(before.subscriptions.slice(1).map(item => item.id));
+            const restore = await fetch(`${baseUrl}/api/backups/restore`, { method: 'POST', headers, body: JSON.stringify({ filename }) });
+            const body = await json(restore) as { success?: boolean; data?: Database };
+            expect(body).toMatchObject({ success: true });
+            expect(restore.status).toBe(200);
+            const persisted = (await runtime.readDB())!;
+            expect(persisted.subscriptions.map(item => item.id)).toEqual(before.subscriptions.map(item => item.id));
+            expect(getCanonicalPersistedFingerprint(body.data!)).toBe(getCanonicalPersistedFingerprint(persisted));
+            expect(runtime.getReadiness().status).toBe('ready');
+        });
+    });
     it('never returns an unpersisted lifecycle catch-up state after a write failure', async () => {
         const runtime = (await createTestRuntime());
         runtime.env.NODE_ENV = 'development';

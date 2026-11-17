@@ -34,6 +34,24 @@ it('migrates business data, refuses overwrite, and preserves a safety backup wit
     try { expect((await client.execute("SELECT reason FROM backups WHERE reason='migration.safety'")).rows).toHaveLength(1); }
     finally { client.close(); }
 });
+it('rewrites target tables whose rows are in another order with --force', async () => {
+    const options = await prepare();
+    await migrateToTurso(options);
+    // A source with the same rows in another order, written into a fresh file in array order.
+    const reordered = JSON.parse(fs.readFileSync('fixtures/demo-database.json', 'utf8'));
+    reordered.members.reverse();
+    reordered.platforms.reverse();
+    reordered.subscriptions.reverse();
+    const sourcePath = path.join(path.dirname(options.sourcePath), 'reordered.db');
+    await runMigrations(sourcePath);
+    await saveToSQLite(sourcePath, reordered);
+    expect((await migrateToTurso({ ...options, sourcePath, force: true })).imported).toBe(true);
+    const target = await loadFromSQLite(options.targetUrl);
+    expect(target.members.map(member => member.id)).toEqual(['m_gamma', 'm_beta', 'm_alpha']);
+    expect(target.platforms.map(platform => platform.id)).toEqual(['p_team', 'p_music', 'p_video']);
+    expect(target.subscriptions.map(subscription => subscription.id)).toEqual(['s_gamma_team', 's_beta_music', 's_beta_video_2', 's_beta_video_1', 's_alpha_video']);
+    expect(getCanonicalPersistedFingerprint(target)).toBe(getCanonicalPersistedFingerprint(await loadFromSQLite(sourcePath)));
+});
 it('dry-runs without creating or changing a target and rejects using the source as target', async () => {
     const options = await prepare();
     const localTarget = path.join(path.dirname(options.sourcePath), 'dry-run-target.db');

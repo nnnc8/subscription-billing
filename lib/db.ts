@@ -18,6 +18,7 @@ import { PaymentRepository } from './repositories/payments.js';
 import { TempChargeRepository } from './repositories/tempCharges.js';
 import { HistoryRepository } from './repositories/history.js';
 import { LedgerRepository } from './repositories/ledger.js';
+import { keepsRowOrder } from './repositories/shared.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.join(__dirname, 'migrations');
@@ -150,10 +151,12 @@ export const initSQLite = runMigrations;
 export async function loadFromConnection(db: DatabaseConnection): Promise<Database> {
   // Client.batch(..., read) is one consistent snapshot and one remote round trip.
   // Transaction.batch participates in the existing transaction.
+  // Business rows come back in rowid order, which writeDatabase keeps equal to the array order.
+  const inRowOrder = (select: string) => `${select} ORDER BY rowid`;
   const statements = [
-    'SELECT key, value FROM metadata', PlatformRepository.select, MemberRepository.select,
-    SubscriptionRepository.select, PaymentRepository.select, TempChargeRepository.select,
-    HistoryRepository.select, LedgerRepository.select
+    'SELECT key, value FROM metadata', inRowOrder(PlatformRepository.select), inRowOrder(MemberRepository.select),
+    inRowOrder(SubscriptionRepository.select), inRowOrder(PaymentRepository.select), inRowOrder(TempChargeRepository.select),
+    inRowOrder(HistoryRepository.select), LedgerRepository.select
   ];
   const results = await ('protocol' in db ? db.batch(statements, 'read') : db.batch(statements));
   const metadataMap = SettingsRepository.decode(results[0]!.rows as unknown as Parameters<typeof SettingsRepository.decode>[0]);
@@ -193,16 +196,29 @@ function metadata(data: Database): Record<string, string> {
   };
 }
 
-/** Write only changed rows; every statement stays far below SQLite's variable limit. */
+type RowRepository<T> = { changes(previous: T[], next: T[]): InStatement[] };
+const byId = (row: { id: string }) => row.id;
+
+/** Writes only changed rows, unless that would leave the table out of `next` order. */
+function orderedChanges<T>(repository: RowRepository<T>, previous: T[], next: T[], key: (row: T) => string): InStatement[] {
+  if (keepsRowOrder(previous.map(key), next.map(key))) return repository.changes(previous, next);
+  // Delete every row first, so the inserts get new rowids in next's order.
+  return [...repository.changes(previous, []), ...repository.changes([], next)];
+}
+
+/**
+ * Write only changed rows; every statement stays far below SQLite's variable limit.
+ * Afterwards every business table reads back in `next`'s array order.
+ */
 export async function writeDatabase(tx: Transaction, previous: Database, next: Database): Promise<void> {
   const statements: InStatement[] = [
     ...SettingsRepository.changes(metadata(previous), metadata(next)),
-    ...PlatformRepository.changes(previous.platforms, next.platforms),
-    ...MemberRepository.changes(previous.members, next.members),
-    ...SubscriptionRepository.changes(previous.subscriptions, next.subscriptions),
-    ...PaymentRepository.changes(previous.payments, next.payments),
-    ...TempChargeRepository.changes(previous.tempCharges, next.tempCharges),
-    ...HistoryRepository.changes(previous.history, next.history),
+    ...orderedChanges(PlatformRepository, previous.platforms, next.platforms, byId),
+    ...orderedChanges(MemberRepository, previous.members, next.members, byId),
+    ...orderedChanges(SubscriptionRepository, previous.subscriptions, next.subscriptions, byId),
+    ...orderedChanges(PaymentRepository, previous.payments, next.payments, byId),
+    ...orderedChanges(TempChargeRepository, previous.tempCharges, next.tempCharges, byId),
+    ...orderedChanges(HistoryRepository, previous.history, next.history, entry => entry.month),
     ...LedgerRepository.changes(previous.ledger.entries, next.ledger.entries)
   ];
   for (let start = 0; start < statements.length; start += 100) {

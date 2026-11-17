@@ -3,6 +3,20 @@ import type { InStatement, InValue } from '@libsql/client';
 export type SqlRow = Record<string, InValue>;
 export const DELETE_CHUNK_SIZE = 500;
 
+/**
+ * Whether the rowChanges diff alone leaves the table's rowid order equal to `next`.
+ * An upsert keeps a row's rowid and an insert appends after the largest one, so the rows
+ * that stay must already lead `next`, in their previous order; new rows can only follow.
+ */
+export function keepsRowOrder(previousKeys: readonly unknown[], nextKeys: readonly unknown[]): boolean {
+    const kept = new Set(nextKeys);
+    let position = 0;
+    for (const key of previousKeys) {
+        if (kept.has(key) && nextKeys[position++] !== key) return false;
+    }
+    return true;
+}
+
 /** Compare encoded rows, so absent optional properties and SQL NULL compare equally. */
 export function rowChanges(table: string, key: string, previous: SqlRow[], next: SqlRow[]): InStatement[] {
     const before = new Map(previous.map(row => [row[key], row]));
