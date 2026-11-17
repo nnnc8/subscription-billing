@@ -7,7 +7,8 @@ import { monthToCode } from '../lib/accounting.js';
 import { SESSION_COOKIE_NAME, createSessionCookieValue } from '../lib/auth.js';
 import { getSystemMonth } from '../lib/lifecycle.js';
 import { createApp } from '../server/app.js';
-import { MutationPersistenceError, createRuntime, type Runtime, type RuntimeOptions } from './test-database.js';
+import type { Database } from '../src/types/billing.js';
+import { MutationPersistenceError, createRuntime, getCanonicalPersistedFingerprint, type Runtime, type RuntimeOptions } from './test-database.js';
 const rootDir = path.resolve('.');
 const fixturePath = path.join(rootDir, 'fixtures', 'demo-database.json');
 const sessionSecret = 'integration-session-secret-with-enough-length-1234567890';
@@ -280,6 +281,34 @@ describe('native fetch integration across route groups', () => {
         }, { mutateDB: (async () => {
                 throw new MutationPersistenceError(new Error('forced lifecycle persistence failure'));
             }) as Runtime['mutateDB'] });
+    });
+    it('archives a member and then a platform over HTTP', async () => {
+        const runtime = (await createTestRuntime());
+        await withApp(runtime, async (baseUrl, cookie) => {
+            const member = await fetch(`${baseUrl}/api/member/m_alpha`, { method: 'DELETE', headers: { Cookie: cookie } });
+            expect(await json(member)).toMatchObject({ success: true });
+            expect(member.status).toBe(200);
+            const platform = await fetch(`${baseUrl}/api/platform/p_music`, { method: 'DELETE', headers: { Cookie: cookie } });
+            const platformBody = await json(platform) as unknown as { success: boolean; data: Database };
+            expect(platformBody).toMatchObject({ success: true });
+            expect(platform.status).toBe(200);
+            const persisted = (await runtime.readDB())!;
+            expect(getCanonicalPersistedFingerprint(platformBody.data)).toBe(getCanonicalPersistedFingerprint(persisted));
+            expect(persisted.members.find(item => item.id === 'm_alpha')).toMatchObject({ status: 'archived', archivedMonth: '2026/06' });
+            expect(persisted.platforms.find(item => item.id === 'p_music')).toMatchObject({ status: 'archived', archivedMonth: '2026/06' });
+            expect(persisted.subscriptions.filter(item => item.exitMonth).map(item => [item.id, item.exitMonth]).sort()).toEqual([
+                ['s_alpha_video', '2026/05'],
+                ['s_beta_music', '2026/05']
+            ]);
+            expect(persisted.ledger.entries.slice(-2).map(entry => [entry.type, entry.entityId])).toEqual([
+                ['member.archived', 'm_alpha'],
+                ['platform.archived', 'p_music']
+            ]);
+            expect(runtime.getReadiness().status).toBe('ready');
+            const again = await fetch(`${baseUrl}/api/member/m_alpha`, { method: 'DELETE', headers: { Cookie: cookie } });
+            expect(again.status).toBe(409);
+            expect(await json(again)).toEqual({ error: '成員已停用' });
+        });
     });
 });
 describe('runtime readiness', () => {
