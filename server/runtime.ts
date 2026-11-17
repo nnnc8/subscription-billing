@@ -196,6 +196,8 @@ export function createRuntime(options: RuntimeOptions = {}) {
         if (readyPromise) return readyPromise;
         readyPromise = (async () => {
             await runMigrations(client, migrationsDir);
+            // Migration 003 cannot hash in SQL, so older backups get their sha256 and summary here.
+            await backup.backfillBackupSummaries();
             if (env.MIGRATE_FROM_JSON === '1') {
                 await withWriteTransaction(client, async tx => {
                     const existing = await loadFromConnection(tx);
