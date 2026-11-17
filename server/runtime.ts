@@ -10,7 +10,7 @@ import { runLifecycleCatchUp, getSystemMonth } from '../lib/lifecycle.js';
 import { invalidateRAGIndex } from '../lib/rag.js';
 import type { Database } from '../src/types/billing.js';
 import { createBackupService } from './services/backup.js';
-import { createSessionRevocationStore } from './services/session-revocation.js';
+import { createSessionRevocationStore, importLegacySessionCutoff } from './services/session-revocation.js';
 import { createProposalStore } from './services/proposals.js';
 
 const DEFAULT_ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -198,6 +198,8 @@ export function createRuntime(options: RuntimeOptions = {}) {
             await runMigrations(client, migrationsDir);
             // Migration 003 cannot hash in SQL, so older backups get their sha256 and summary here.
             await backup.backfillBackupSummaries();
+            // An install upgraded from a file-based version keeps its "sign out every device".
+            await importLegacySessionCutoff(client, path.join(dataDir, 'auth-state.json'));
             if (env.MIGRATE_FROM_JSON === '1') {
                 await withWriteTransaction(client, async tx => {
                     const existing = await loadFromConnection(tx);

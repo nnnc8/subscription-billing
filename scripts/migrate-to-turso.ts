@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { findAccountingWarnings } from '../lib/accounting.js';
 import { getCanonicalPersistedFingerprint, loadFromConnection, openDatabase, readMetadataRows, replaceMetadataRows, runMigrations, verifyDatabase, withWriteTransaction, writeDatabase } from '../lib/db.js';
 import { createBackupService } from '../server/services/backup.js';
+import { raiseSessionCutoff } from '../server/services/session-revocation.js';
 
 export type MigrationOptions = { sourcePath: string; targetUrl: string; authToken?: string; force?: boolean; dryRun?: boolean };
 export async function migrateToTurso(options: MigrationOptions) {
@@ -42,6 +43,8 @@ export async function migrateToTurso(options: MigrationOptions) {
                 || (await tx.execute('SELECT key FROM metadata LIMIT 1')).rows.length > 0;
             if (occupied && !options.force) throw new Error('Target contains business data; use --force only after reviewing a backup');
             if (occupied) await createBackupService({ client: target }).insertBackup(tx, previous, 'migration.safety');
+            // Cookies issued before the import stop working; a later cutoff already in the target stays.
+            await raiseSessionCutoff(tx, Date.now());
             await writeDatabase(tx, previous, data);
             // Every source metadata row, also those equal to a code default, which writeDatabase skips.
             await replaceMetadataRows(tx, metadataRows);

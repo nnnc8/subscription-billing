@@ -3,12 +3,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import type { Request } from 'express';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { appendLedgerEvent, ensureHistorySeals, findAccountingWarnings, normalizeDatabaseRelations } from '../lib/accounting.js';
+import { SESSION_COOKIE_NAME, createSessionCookieValue } from '../lib/auth.js';
 import { getCanonicalPersistedFingerprint, loadFromSQLite, openDatabase, runMigrations, saveToSQLite } from '../lib/db.js';
 import { advanceMonthOnce } from '../lib/lifecycle.js';
 import { migrateToTurso } from '../scripts/migrate-to-turso.js';
+import { verifyRequestSession } from '../server/middleware/auth.js';
 import type { Database, Member, Platform, Subscription } from '../src/types/billing.js';
+import { createRuntime } from './test-database.js';
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
@@ -223,5 +227,47 @@ describe('metadata rows', () => {
             await client.executeMultiple("CREATE TRIGGER rewrite_ledger_version AFTER INSERT ON metadata WHEN NEW.key='ledgerVersion' BEGIN UPDATE metadata SET value='1.0' WHERE key='ledgerVersion'; END;");
         } finally { client.close(); }
         await expect(migrateToTurso(options)).rejects.toThrow(/Committed target metadata mismatch/);
+    });
+});
+describe('session cutoff', () => {
+    const secret = 'migration-session-secret-with-enough-length-0123456789';
+    const email = 'owner@example.com';
+    /** The app as it starts on the migrated target. */
+    async function appOn(targetUrl: string) {
+        const runtime = createRuntime({
+            rootDir: path.resolve('.'), dataDir: temporaryDirectory(),
+            env: { NODE_ENV: 'test', TURSO_DATABASE_URL: targetUrl, APP_SESSION_SECRET: secret, GOOGLE_CLIENT_ID: 'test-client', GOOGLE_CLIENT_SECRET: 'test-secret', GOOGLE_ALLOWED_EMAILS: email }
+        });
+        await runtime.ensureReady();
+        return runtime;
+    }
+    const withSession = (issuedAt: number) => ({
+        headers: { cookie: `${SESSION_COOKIE_NAME}=${createSessionCookieValue({ secret, user: { email }, now: issuedAt })}` }
+    }) as unknown as Request;
+    it('signs out sessions issued before the import, in its transaction, and never lowers a later cutoff', async () => {
+        const options = await mainEraSource(realShapedLedger());
+        const startedAt = Date.now();
+        await migrateToTurso(options);
+        const runtime = await appOn(options.targetUrl);
+        const cutoff = await runtime.sessionsRevokedBefore();
+        expect(cutoff).toBeGreaterThanOrEqual(startedAt);
+        expect(cutoff).toBeLessThanOrEqual(Date.now());
+        expect(await verifyRequestSession(runtime, withSession(startedAt - 1))).toEqual({ ok: false, reason: 'revoked' });
+        expect(await verifyRequestSession(runtime, withSession(cutoff))).toMatchObject({ ok: true });
+
+        // A --force import keeps a later "sign out every device" made on the target.
+        await runtime.revokeAllSessions(cutoff + 3_600_000);
+        await migrateToTurso({ ...options, force: true });
+        expect(await runtime.sessionsRevokedBefore()).toBe(cutoff + 3_600_000);
+
+        // A failed import also rolls back its cutoff.
+        await runtime.client.execute("UPDATE auth_state SET value='1' WHERE key='sessionsRevokedBefore'");
+        const changed = await loadFromSQLite(options.sourcePath);
+        changed.bankInfo = 'must roll back';
+        await saveToSQLite(options.sourcePath, changed);
+        // Fails the read-back check at the end of the import transaction.
+        await runtime.client.executeMultiple("CREATE TRIGGER corrupt_import AFTER UPDATE ON metadata WHEN NEW.key='bankInfo' BEGIN UPDATE metadata SET value='changed by a trigger' WHERE key='bankInfo'; END;");
+        await expect(migrateToTurso({ ...options, force: true })).rejects.toThrow(/read-back mismatch/);
+        expect(await runtime.sessionsRevokedBefore()).toBe(1);
     });
 });
