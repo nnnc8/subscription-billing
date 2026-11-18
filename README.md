@@ -35,11 +35,11 @@ Manage members, track payments, generate invoices, and reconcile accounts — al
 |-------|-----------|
 | Frontend | React 19, Vite 8 |
 | Backend | Express 5, TypeScript ESM |
-| Database | SQLite (WAL mode) via `better-sqlite3` |
+| Database | Turso / local SQLite via `@libsql/client` |
 | AI | Google Gemini AI Studio API (optional; no Vertex runtime) |
 | Auth | Google OAuth 2.0 |
 | Testing | Vitest |
-| Deployment | Docker, macOS LaunchAgent |
+| Deployment | Vercel + Turso, Docker, macOS LaunchAgent |
 
 ## Getting Started
 
@@ -76,7 +76,7 @@ GOOGLE_GEMINI_API_KEY=<your-gemini-api-key>  # Optional AI Studio key
 PUBLIC_ORIGIN=http://127.0.0.1:3000
 # ALLOWED_ORIGINS=https://billing.example.com
 # TRUST_PROXY_CIDRS=10.0.0.0/8
-# CLIENT_IP_HEADER=fly-client-ip  # header your proxy always overwrites; used for rate limiting
+# CLIENT_IP_HEADER=x-forwarded-for  # only when your proxy overwrites this header
 ```
 
 ### Running
@@ -117,7 +117,7 @@ graph TB
     end
 
     subgraph Storage ["Storage"]
-        SQLite["SQLite (WAL)"]
+        SQLite["Turso / SQLite"]
         Vector["Vector Index"]
     end
 
@@ -183,11 +183,22 @@ pnpm run lint
 
 ## Deployment
 
-### Fly.io (public HTTPS, any device)
+### Vercel + Turso
 
-`fly.toml` deploys the Docker image to a single Fly Machine with a persistent volume, daily volume snapshots and Google sign-in. Follow the step-by-step guide in [docs/deploy-fly.md](docs/deploy-fly.md) (Traditional Chinese): create the app and volume, register the OAuth redirect URI `https://<app>.fly.dev/api/auth/callback`, set secrets, deploy, and migrate an existing `database.db`.
+Use [docs/deploy-vercel.md](docs/deploy-vercel.md) for the Traditional Chinese guide: Tokyo databases and functions, Google OAuth, environment variables, migration, backups, free-tier limits, and validation commands.
 
-Run exactly one instance: SQLite and the in-process mutation queue do not support horizontal scaling.
+Set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` for Turso. Without a URL, the server opens `${DATA_DIR}/database.db`. Backups, session revocation, and proposals live in SQL tables. Local file mode supports one Node process; runtimes in that process share a connection and queue. Remote instances coordinate writes through database transactions. Rate limits and RAG indexes remain per instance.
+
+```bash
+pnpm migrate:turso --source /safe-copy/database.db --dry-run
+pnpm migrate:turso --source /safe-copy/database.db
+pnpm build:vercel:offline
+# Use only a disposable, fresh turso dev database; both commands clear its schema.
+TEST_LIBSQL_URL=http://127.0.0.1:8080 pnpm smoke:vercel
+TEST_LIBSQL_URL=http://127.0.0.1:8080 pnpm test:libsql
+```
+
+Deployment and the built function still require the validation recorded in the guide. Do not set `MIGRATE_FROM_JSON=1` on Vercel. Import the approved local database before first use.
 
 ### Docker
 
@@ -195,7 +206,7 @@ Run exactly one instance: SQLite and the in-process mutation queue do not suppor
 docker compose up --build -d
 ```
 
-The application stores `database.db`, its WAL/SHM files, and rotating backups only under `DATA_DIR` (the Compose volume is mounted at `/data`). Do not bake live data or secrets into an image. The disposable end-to-end smoke is:
+The application stores `database.db`, and any SQLite journal files only under `DATA_DIR`; rotating backup snapshots are rows in `database.db` (the Compose volume is mounted at `/data`). Do not bake live data or secrets into an image. The disposable end-to-end smoke is:
 
 ```bash
 scripts/docker-smoke.sh
@@ -233,7 +244,7 @@ pnpm run launchd:uninstall  # Remove service
 | `GET` | `/api/automation/inbox` | List automation proposals |
 | `GET` | `/api/backups`, `/api/backups/:filename/preview` | List and preview backups |
 | `POST` | `/api/backups/restore`, `/api/backups/create` | Restore or create backups |
-| `DELETE` | `/api/backups/:filename` | Delete a backup through the ledger-safe tombstone flow |
+| `DELETE` | `/api/backups/:filename` | Delete a backup and record its ledger event atomically |
 
 ## Contributing
 

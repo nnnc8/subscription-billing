@@ -73,7 +73,7 @@ export function clearOAuthStateCookie(runtime: Runtime): string {
     return buildOAuthStateCookie(runtime, '', { maxAge: 0 });
 }
 
-export function verifyRequestSession(runtime: Runtime, req: Request): ReturnType<typeof verifySessionCookieValue> {
+export async function verifyRequestSession(runtime: Runtime, req: Request): Promise<ReturnType<typeof verifySessionCookieValue>> {
     const value = parseCookies(req)[SESSION_COOKIE_NAME];
     const result = verifySessionCookieValue(value || '', { secret: runtime.env.APP_SESSION_SECRET || '' });
     if (!result.ok || !result.session) return result;
@@ -84,7 +84,7 @@ export function verifyRequestSession(runtime: Runtime, req: Request): ReturnType
     if (!getGoogleOAuthConfig(runtime.env).allowedEmails.has(email)) {
         return { ok: false, reason: 'not-allowed' };
     }
-    if (!(result.session.iat >= runtime.sessionsRevokedBefore())) {
+    if (!(result.session.iat >= await runtime.sessionsRevokedBefore())) {
         return { ok: false, reason: 'revoked' };
     }
     return result;
@@ -97,12 +97,12 @@ export function getGoogleRedirectUri(runtime: Runtime, _req: Request): string {
 }
 
 export function createRequireAuth(runtime: Runtime): RequestHandler {
-    return (req, res, next) => {
+    return async (req, res, next) => {
         if (!runtime.isAuthConfigured()) {
             res.status(503).json({ error: 'Authentication is not configured' });
             return;
         }
-        const session = verifyRequestSession(runtime, req);
+        const session = await verifyRequestSession(runtime, req);
         if (!session.ok || !session.session) {
             res.status(401).json({ error: 'Unauthorized' });
             return;

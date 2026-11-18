@@ -23,8 +23,8 @@ export type MutationOutcome = {
     event?: LedgerEventDraft | null;
 };
 
-export function readDatabase(runtime: Runtime): Database {
-    const db = runtime.readDB();
+export async function readDatabase(runtime: Runtime): Promise<Database> {
+    const db = await runtime.readDB();
     if (!db) throw httpError(500, 'Database error');
     return db;
 }

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+    findFirstDuplicateSubscriptionMonth,
     isMemberRecord,
     isPlatformRecord,
     MONTH_RE,
@@ -15,6 +16,7 @@ import {
     generateId,
     mutateAndSend,
     parseMoney,
+    type MutationOutcome,
 } from './shared.js';
 
 const moneyInputSchema = z.union([z.number(), z.string().max(100)]);
@@ -158,6 +160,76 @@ function summarizeSettingsBundle(
     };
 }
 
+/**
+ * Refuses subscriptions that bill one member twice for one platform, in the open month or in a
+ * later month. The save-time audit sees only the open month, so such a seat would pass and then
+ * fail the month close, and every catch-up after it, once its month arrives.
+ */
+function assertNoDuplicateSubscriptions(db: Database): void {
+    const duplicate = findFirstDuplicateSubscriptionMonth(db);
+    if (!duplicate) return;
+    const details = duplicate.warnings.map(warning => warning.detail).join('；');
+    throw httpError(400, `訂閱未儲存：${duplicate.month} 起同一成員同一平台重複啟用（${details}）。請調整起算月份，或先為既有訂閱設定退出月份。`);
+}
+
+/** Sets exitMonth to last month on matching subscriptions still billed this month or later. */
+function closeArchivedSubscriptions(db: Database, belongs: (subscription: Subscription) => boolean): number {
+    const stopMonth = previousMonthString(db.currentMonth) || db.currentMonth;
+    let closedSubscriptions = 0;
+    for (const subscription of db.subscriptions) {
+        if (!belongs(subscription)) continue;
+        if (!subscription.exitMonth || subscription.exitMonth >= db.currentMonth) {
+            subscription.exitMonth = stopMonth;
+            closedSubscriptions += 1;
+        }
+    }
+    return closedSubscriptions;
+}
+
+// Archiving writes only persisted columns (status, archivedAt, archivedMonth, exitMonth), so the
+// canonical read-back matches. Who archived and when is recorded by the ledger event.
+export function archiveMember(db: Database, id: string): MutationOutcome {
+    const member = db.members.find(item => item.id === id);
+    if (!member) throw httpError(404, '成員不存在');
+    if (member.status === 'archived' || member.archivedAt) throw httpError(409, '成員已停用');
+
+    const archivedMonth = db.currentMonth;
+    member.status = 'archived';
+    member.archivedAt = new Date().toISOString();
+    member.archivedMonth = archivedMonth;
+    const closedSubscriptions = closeArchivedSubscriptions(db, subscription => isMemberRecord(subscription, member));
+    return {
+        event: {
+            type: 'member.archived',
+            summary: `停用成員 ${member.name}`,
+            entityType: 'member',
+            entityId: member.id,
+            payload: { memberId: member.id, memberName: member.name, archivedMonth, closedSubscriptions }
+        }
+    };
+}
+
+export function archivePlatform(db: Database, id: string): MutationOutcome {
+    const platform = db.platforms.find(item => item.id === id);
+    if (!platform) throw httpError(404, '平台不存在');
+    if (platform.status === 'archived' || platform.archivedAt) throw httpError(409, '平台已停用');
+
+    const archivedMonth = db.currentMonth;
+    platform.status = 'archived';
+    platform.archivedAt = new Date().toISOString();
+    platform.archivedMonth = archivedMonth;
+    const closedSubscriptions = closeArchivedSubscriptions(db, subscription => isPlatformRecord(subscription, platform));
+    return {
+        event: {
+            type: 'platform.archived',
+            summary: `停用平台 ${platform.name}`,
+            entityType: 'platform',
+            entityId: platform.id,
+            payload: { platformId: platform.id, platformName: platform.name, archivedMonth, closedSubscriptions }
+        }
+    };
+}
+
 export function createSettingsEntitiesRouter(runtime: Runtime): Router {
     const router = Router();
 
@@ -201,6 +273,7 @@ export function createSettingsEntitiesRouter(runtime: Runtime): Router {
         await mutateAndSend(runtime, res, db => {
             assertConfigVersion(db, baseVersion);
             db.subscriptions = nextSubscriptions;
+            assertNoDuplicateSubscriptions(db);
             return {
                 event: {
                     type: 'subscriptions.updated',
@@ -298,40 +371,7 @@ export function createSettingsEntitiesRouter(runtime: Runtime): Router {
 
     router.delete('/api/member/:id', async (req, res) => {
         const { id } = parseInput(idParamsSchema, req.params, '成員 ID 不合法');
-        await mutateAndSend(runtime, res, db => {
-            const member = db.members.find(item => item.id === id);
-            if (!member) throw httpError(404, '成員不存在');
-            if (member.status === 'archived' || member.archivedAt) throw httpError(409, '成員已停用');
-
-            const archivedAt = new Date().toISOString();
-            const archivedMonth = db.currentMonth;
-            const stopMonth = previousMonthString(db.currentMonth) || db.currentMonth;
-            Object.assign(member, {
-                status: 'archived',
-                archivedAt,
-                archivedBy: 'local-admin',
-                archivedMonth,
-                archiveReason: '使用者停用'
-            });
-            let closedSubscriptions = 0;
-            for (const subscription of db.subscriptions) {
-                if (!isMemberRecord(subscription, member)) continue;
-                if (!subscription.exitMonth || subscription.exitMonth >= db.currentMonth) {
-                    subscription.exitMonth = stopMonth;
-                    Object.assign(subscription, { archivedWithMemberAt: archivedAt });
-                    closedSubscriptions += 1;
-                }
-            }
-            return {
-                event: {
-                    type: 'member.archived',
-                    summary: `停用成員 ${member.name}`,
-                    entityType: 'member',
-                    entityId: member.id,
-                    payload: { memberId: member.id, memberName: member.name, archivedMonth, closedSubscriptions }
-                }
-            };
-        }, { reason: 'member.archive' });
+        await mutateAndSend(runtime, res, db => archiveMember(db, id), { reason: 'member.archive' });
     });
 
     router.post('/api/platform', async (req, res) => {
@@ -365,40 +405,7 @@ export function createSettingsEntitiesRouter(runtime: Runtime): Router {
 
     router.delete('/api/platform/:id', async (req, res) => {
         const { id } = parseInput(idParamsSchema, req.params, '平台 ID 不合法');
-        await mutateAndSend(runtime, res, db => {
-            const platform = db.platforms.find(item => item.id === id);
-            if (!platform) throw httpError(404, '平台不存在');
-            if (platform.status === 'archived' || platform.archivedAt) throw httpError(409, '平台已停用');
-
-            const archivedAt = new Date().toISOString();
-            const archivedMonth = db.currentMonth;
-            const stopMonth = previousMonthString(db.currentMonth) || db.currentMonth;
-            Object.assign(platform, {
-                status: 'archived',
-                archivedAt,
-                archivedBy: 'local-admin',
-                archivedMonth,
-                archiveReason: '使用者停用'
-            });
-            let closedSubscriptions = 0;
-            for (const subscription of db.subscriptions) {
-                if (!isPlatformRecord(subscription, platform)) continue;
-                if (!subscription.exitMonth || subscription.exitMonth >= db.currentMonth) {
-                    subscription.exitMonth = stopMonth;
-                    Object.assign(subscription, { archivedWithPlatformAt: archivedAt });
-                    closedSubscriptions += 1;
-                }
-            }
-            return {
-                event: {
-                    type: 'platform.archived',
-                    summary: `停用平台 ${platform.name}`,
-                    entityType: 'platform',
-                    entityId: platform.id,
-                    payload: { platformId: platform.id, platformName: platform.name, archivedMonth, closedSubscriptions }
-                }
-            };
-        }, { reason: 'platform.archive' });
+        await mutateAndSend(runtime, res, db => archivePlatform(db, id), { reason: 'platform.archive' });
     });
 
     return router;

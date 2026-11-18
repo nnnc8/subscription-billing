@@ -164,17 +164,17 @@ if ! docker exec "$CONTAINER" test -f /data/docker-smoke-marker; then
     echo 'Volume marker did not survive container recreation' >&2
     exit 1
 fi
-if ! docker exec "$CONTAINER" test -f "/data/backups/$BACKUP_NAME"; then
-    echo 'Backup did not survive container recreation' >&2
-    exit 1
-fi
 
-node - "$BASE_URL" "sb_session=$SESSION_COOKIE" <<'NODE'
+node - "$BASE_URL" "sb_session=$SESSION_COOKIE" "$BACKUP_NAME" <<'NODE'
 const response = await fetch(`${process.argv[2]}/api/data`, { headers: { Cookie: process.argv[3] } });
 if (!response.ok) throw new Error(`/api/data returned ${response.status}`);
 const payload = await response.json();
 if (!payload.members?.some(item => item.name === 'Docker Smoke Member')) throw new Error('member did not survive recreation');
 if (!payload.payments?.some(item => item.note === 'docker-smoke')) throw new Error('payment did not survive recreation');
+const backups = await fetch(`${process.argv[2]}/api/backups`, { headers: { Cookie: process.argv[3] } });
+if (!backups.ok) throw new Error(`/api/backups returned ${backups.status}`);
+const inventory = await backups.json();
+if (!inventory.backups?.some(item => item.filename === process.argv[4] && item.readable)) throw new Error('database backup did not survive recreation');
 NODE
 
 echo 'docker smoke passed: authenticated member/payment/backup persisted across recreation'

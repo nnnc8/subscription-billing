@@ -16,12 +16,6 @@ interface AutomationTabProps {
     onDataChange: () => void | Promise<void>;
 }
 
-interface ChipConfig {
-    label: string;
-    color: string;
-    bg: string;
-}
-
 interface StatusMessage {
     text: string;
     isError: boolean;
@@ -33,16 +27,16 @@ interface AutomationActionResponse {
     proposal?: AutomationProposal;
 }
 
-const STATUS_CONFIG: Record<ProposalStatus, ChipConfig> = {
-    applied: { label: '已入帳', color: 'var(--green)', bg: 'var(--green-bg)' },
-    pending: { label: '待覆核', color: 'var(--orange)', bg: 'var(--orange-bg)' },
-    rejected: { label: '已擋下', color: 'var(--red)', bg: 'var(--red-bg)' },
+const STATUS_CONFIG: Record<ProposalStatus, { label: string; tone: string }> = {
+    applied: { label: '已入帳', tone: 'pos' },
+    pending: { label: '待覆核', tone: 'warn' },
+    rejected: { label: '已擋下', tone: 'neg' },
 };
 
-const KIND_CONFIG: Record<ProposalKind, ChipConfig> = {
-    payment: { label: '付款', color: 'var(--blue)', bg: 'var(--blue-bg)' },
-    subscription: { label: '訂閱', color: 'var(--purple)', bg: 'var(--purple-bg)' },
-    tempCharge: { label: '加帳', color: 'var(--orange)', bg: 'var(--orange-bg)' },
+const KIND_LABEL: Record<ProposalKind, string> = {
+    payment: '付款',
+    subscription: '訂閱',
+    tempCharge: '加帳',
 };
 
 const MODE_OPTIONS: ReadonlyArray<{ value: IngestMode; label: string }> = [
@@ -61,63 +55,17 @@ function getErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
-// ---------------------------------------------------------------------------
-// Status chip — operational style (no gradients)
-// ---------------------------------------------------------------------------
 function StatusChip({ status }: { status: ProposalStatus }) {
     const c = STATUS_CONFIG[status];
-    return (
-        <span style={{
-            display: 'inline-block',
-            padding: '2px 8px',
-            borderRadius: 'var(--radius-sm)',
-            fontSize: '0.72rem',
-            fontWeight: 600,
-            color: c.color,
-            background: c.bg,
-            letterSpacing: '0.01em',
-        }}>
-            {c.label}
-        </span>
-    );
+    return <span className={`pill ${c.tone}`}>{c.label}</span>;
 }
 
-// ---------------------------------------------------------------------------
-// Kind chip — compact
-// ---------------------------------------------------------------------------
-function KindChip({ kind }: { kind: ProposalKind }) {
-    const c = KIND_CONFIG[kind];
-    return (
-        <span style={{
-            display: 'inline-block',
-            padding: '2px 7px',
-            borderRadius: 'var(--radius-sm)',
-            fontSize: '0.7rem',
-            fontWeight: 600,
-            color: c.color,
-            background: c.bg,
-        }}>
-            {c.label}
-        </span>
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Confidence cell — low conf (<70%) in red
-// ---------------------------------------------------------------------------
+// Below 70% the parse is shaky enough that the operator should read the source line.
 function ConfidenceCell({ score }: { score: number }) {
     const pct = Math.round(score * 100);
-    const color = pct >= 90 ? 'var(--green)' : pct >= 70 ? 'var(--text-secondary)' : 'var(--red)';
-    return (
-        <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: '0.8rem', color }}>
-            {pct}%
-        </span>
-    );
+    return <span className={pct < 70 ? 'low-confidence' : undefined}>{pct}%</span>;
 }
 
-// ---------------------------------------------------------------------------
-// Payload description — compact single-line summary
-// ---------------------------------------------------------------------------
 function PayloadDesc({ kind, payload }: { kind: ProposalKind; payload: Record<string, unknown> }) {
     const memberName = typeof payload.memberName === 'string' ? payload.memberName : '';
     const amount = typeof payload.amount === 'number' ? payload.amount : null;
@@ -127,38 +75,17 @@ function PayloadDesc({ kind, payload }: { kind: ProposalKind; payload: Record<st
     const startMonth = typeof payload.startMonth === 'string' ? payload.startMonth : '';
 
     if (kind === 'payment') {
-        return (
-            <span>
-                <strong>{memberName}</strong>
-                {amount != null && <> &nbsp;${amount}</>}
-                {date && <> · {date}</>}
-            </span>
-        );
+        return <span className="proposal-desc"><strong>{memberName}{amount != null && ` 付款 $${amount}`}</strong>{date && <span className="sub">{date}</span>}</span>;
     }
     if (kind === 'tempCharge') {
-        return (
-            <span>
-                <strong>{memberName}</strong>
-                {amount != null && <> &nbsp;+${amount}</>}
-                {description && <> · {description}</>}
-            </span>
-        );
+        return <span className="proposal-desc"><strong>{memberName}{amount != null && ` 加帳 $${amount}`}</strong>{description && <span className="sub">{description}</span>}</span>;
     }
     if (kind === 'subscription') {
-        return (
-            <span>
-                <strong>{memberName}</strong>
-                {' '}{platformName && <>訂 {platformName}</>}
-                {startMonth && <> 從 {startMonth}</>}
-            </span>
-        );
+        return <span className="proposal-desc"><strong>{memberName}{platformName && ` 加入 ${platformName}`}</strong>{startMonth && <span className="sub">{startMonth} 起算</span>}</span>;
     }
-    return <span style={{ color: 'var(--text-tertiary)', fontSize: '0.78rem' }}>{JSON.stringify(payload).slice(0, 40)}</span>;
+    return <span className="proposal-desc"><span className="sub">{JSON.stringify(payload).slice(0, 40)}</span></span>;
 }
 
-// ---------------------------------------------------------------------------
-// Proposal row in the queue table
-// ---------------------------------------------------------------------------
 interface ProposalRowProps {
     proposal: AutomationProposal;
     onConfirm: (proposalId: string) => Promise<void>;
@@ -168,125 +95,59 @@ interface ProposalRowProps {
 }
 
 function ProposalRow({ proposal, onConfirm, onReject, confirmingId, rejectingId }: ProposalRowProps) {
-    const [showWarnings, setShowWarnings] = useState(false);
+    const [showDetail, setShowDetail] = useState(false);
     const { id, kind, sourceText, confidence, reason, warnings, payload, status, rejectReason, ledgerEventId } = proposal;
     const isConfirming = confirmingId === id;
     const isRejecting = rejectingId === id;
-    const hasWarnings = warnings.length > 0;
 
     return (
         <>
-            <tr style={{
-                borderBottom: '1px solid var(--separator)',
-                background: status === 'applied'
-                    ? 'rgba(52,199,89,0.03)'
-                    : status === 'rejected'
-                    ? 'rgba(255,59,48,0.03)'
-                    : 'transparent',
-            }}>
-                {/* Kind */}
-                <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                    <KindChip kind={kind} />
-                </td>
-
-                {/* Description */}
-                <td style={{ padding: '8px 10px', fontSize: '0.82rem', color: 'var(--text-primary)' }}>
+            <tr>
+                <td>{KIND_LABEL[kind]}</td>
+                <td>
                     <PayloadDesc kind={kind} payload={payload} />
-                    {hasWarnings && (
-                        <button
-                            type="button"
-                            onClick={() => setShowWarnings(v => !v)}
-                            aria-expanded={showWarnings}
-                            style={{
-                                marginLeft: '6px', border: 'none', background: 'none',
-                                cursor: 'pointer', color: 'var(--orange)', fontSize: '0.7rem',
-                                padding: '0 2px', verticalAlign: 'middle',
-                            }}
-                            title={warnings.join('; ')}
-                        >
-                            ⚠ {warnings.length}
-                        </button>
-                    )}
+                    <button type="button" className="link-btn" onClick={() => setShowDetail(v => !v)} aria-expanded={showDetail}>
+                        {warnings.length > 0 ? `${warnings.length} 則警告` : '原文與判斷'}
+                    </button>
                 </td>
-
-                {/* Confidence */}
-                <td style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <ConfidenceCell score={confidence} />
-                </td>
-
-                {/* Status */}
-                <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                    <StatusChip status={status} />
-                </td>
-
-                {/* Ledger / Actions */}
-                <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                <td className="n"><ConfidenceCell score={confidence} /></td>
+                <td><StatusChip status={status} /></td>
+                <td className="n">
                     {status === 'applied' && ledgerEventId && (
                         <button
                             type="button"
+                            className="link-btn"
                             aria-label={`複製 Ledger event ${ledgerEventId}`}
-                            style={{
-                                color: 'var(--blue)',
-                                cursor: 'pointer',
-                                padding: 0,
-                                border: 'none',
-                                background: 'transparent',
-                            }}
                             title={`Ledger event: ${ledgerEventId}`}
                             onClick={() => { void navigator.clipboard?.writeText(ledgerEventId); }}
                         >
-                            <code style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', userSelect: 'all' }}>
-                                {ledgerEventId.slice(0, 12)}
-                            </code>
+                            {ledgerEventId.slice(0, 12)}
                         </button>
                     )}
                     {status === 'pending' && (
-                        <span style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                            <button
-                                type="button"
-                                className="btn btn-primary"
-                                style={{ padding: '3px 10px', fontSize: '0.75rem', minHeight: '28px' }}
-                                onClick={() => { void onConfirm(id); }}
-                                disabled={isConfirming || isRejecting}
-                            >
-                                {isConfirming ? '…' : '入帳'}
+                        <span className="row-actions">
+                            <button type="button" className="btn btn-primary" onClick={() => { void onConfirm(id); }} disabled={isConfirming || isRejecting}>
+                                {isConfirming ? '入帳中…' : '入帳'}
                             </button>
-                            <button
-                                type="button"
-                                className="btn btn-secondary"
-                                style={{ padding: '3px 10px', fontSize: '0.75rem', minHeight: '28px' }}
-                                onClick={() => { void onReject(id); }}
-                                disabled={isConfirming || isRejecting}
-                            >
-                                {isRejecting ? '…' : '拒絕'}
+                            <button type="button" className="btn" onClick={() => { void onReject(id); }} disabled={isConfirming || isRejecting}>
+                                {isRejecting ? '處理中…' : '拒絕'}
                             </button>
                         </span>
                     )}
                     {status === 'rejected' && rejectReason && (
-                        <span
-                            style={{ fontSize: '0.72rem', color: 'var(--red)', cursor: 'default' }}
-                            title={rejectReason}
-                        >
+                        <span className="danger-text" title={rejectReason}>
                             {rejectReason.slice(0, 30)}{rejectReason.length > 30 ? '…' : ''}
                         </span>
                     )}
                 </td>
             </tr>
-
-            {/* Expandable warnings row */}
-            {showWarnings && hasWarnings && (
-                <tr style={{ background: 'var(--orange-bg)' }}>
-                    <td colSpan={5} style={{ padding: '6px 10px 6px 20px', fontSize: '0.75rem', color: 'var(--orange)' }}>
-                        <strong>原文：</strong>
-                        <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-                            {sourceText.slice(0, 80)}{sourceText.length > 80 ? '…' : ''}
-                        </span>
-                        <span style={{ margin: '0 8px', color: 'var(--separator-opaque)' }}>|</span>
-                        <strong>AI 判斷：</strong>
-                        <span style={{ color: 'var(--text-secondary)' }}>{reason}</span>
-                        {warnings.map((w, i) => (
-                            <span key={i} style={{ marginLeft: '8px' }}>· ⚠ {w}</span>
-                        ))}
+            {showDetail && (
+                <tr className="proposal-note">
+                    <td />
+                    <td colSpan={4}>
+                        <p>原文：{sourceText.slice(0, 80)}{sourceText.length > 80 ? '…' : ''}</p>
+                        <p>AI 判斷：{reason}</p>
+                        {warnings.map((w, i) => <p key={i} className="danger-text">{w}</p>)}
                     </td>
                 </tr>
             )}
@@ -409,176 +270,75 @@ export function AutomationTab({ active, apiFetch, onDataChange }: AutomationTabP
     };
 
     return (
-        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
-            {/* ── Left Panel: Input ── */}
-            <div style={{
-                flexShrink: 0,
-                width: '260px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.75rem',
-            }}>
-                <div className="ledger-panel" style={{ padding: '1rem' }}>
-                    <div style={{ marginBottom: '0.6rem' }}>
-                        <label htmlFor="automation-text" style={{
-                            display: 'block',
-                            fontSize: '0.7rem',
-                            fontWeight: 600,
-                            color: 'var(--text-tertiary)',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.04em',
-                            marginBottom: '0.4rem',
-                        }}>
-                            帳務文字
-                        </label>
-                        <textarea
-                            id="automation-text"
-                            value={text}
-                            onChange={e => setText(e.target.value)}
-                            placeholder={'例如：\n王小明 轉 270\n幫李小明 6 月起加 Netflix\n張大明 額外加帳 50 網域費'}
-                            rows={6}
-                            style={{
-                                width: '100%',
-                                boxSizing: 'border-box',
-                                background: 'var(--bg-tertiary)',
-                                border: '1px solid var(--separator-opaque)',
-                                borderRadius: 'var(--radius-sm)',
-                                color: 'var(--text-primary)',
-                                padding: '8px 10px',
-                                fontSize: '0.82rem',
-                                lineHeight: 1.55,
-                                resize: 'vertical',
-                                outline: 'none',
-                                fontFamily: 'var(--font-family)',
-                            }}
-                            onFocus={e => e.target.style.borderColor = 'var(--blue)'}
-                            onBlur={e => e.target.style.borderColor = 'var(--separator-opaque)'}
-                        />
-                    </div>
+        <article className="card automation">
+            <header className="card-head">
+                <div>
+                    <h2>文字入帳</h2>
+                    <p className="meta">貼上轉帳通知或對話，解析成收款、加帳或名額變更。</p>
+                </div>
+            </header>
 
-                    {/* Mode selector */}
-                    <div style={{ marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div className="automation-input">
+                <label htmlFor="automation-text" className="field-label">帳務文字</label>
+                <textarea
+                    id="automation-text"
+                    className="input"
+                    value={text}
+                    onChange={e => setText(e.target.value)}
+                    placeholder={'例如：\n王小明 轉 270\n幫李小明 6 月起加 Netflix\n張大明 額外加帳 50 網域費'}
+                    rows={4}
+                />
+                <div className="automation-submit">
+                    <div className="mode-options" role="radiogroup" aria-label="入帳方式">
                         {MODE_OPTIONS.map(opt => (
-                            <label key={opt.value} style={{
-                                display: 'flex', alignItems: 'center', gap: '6px',
-                                fontSize: '0.78rem', color: 'var(--text-secondary)', cursor: 'pointer',
-                            }}>
+                            <label key={opt.value}>
                                 <input
                                     type="radio"
                                     name="ingest-mode"
                                     value={opt.value}
                                     checked={mode === opt.value}
                                     onChange={() => setMode(opt.value)}
-                                    style={{ accentColor: 'var(--blue)' }}
                                 />
                                 {opt.label}
                             </label>
                         ))}
                     </div>
-
-                    <button
-                        type="button"
-                        className="btn btn-primary"
-                        style={{ width: '100%' }}
-                        onClick={handleIngest}
-                        disabled={loading || !text.trim()}
-                    >
+                    <button type="button" className="btn btn-primary" onClick={handleIngest} disabled={loading || !text.trim()}>
                         {loading ? '解析中…' : '解析並入帳'}
                     </button>
                 </div>
-
-                {/* Status message */}
-                {statusMsg && (
-                    <div role={statusMsg.isError ? 'alert' : 'status'} style={{
-                        padding: '8px 12px',
-                        borderRadius: 'var(--radius-sm)',
-                        fontSize: '0.78rem',
-                        color: statusMsg.isError ? 'var(--red)' : 'var(--green)',
-                        background: statusMsg.isError ? 'var(--red-bg)' : 'var(--green-bg)',
-                        border: `1px solid ${statusMsg.isError ? 'rgba(255,59,48,0.2)' : 'rgba(52,199,89,0.2)'}`,
-                    }}>
-                        {statusMsg.text}
-                    </div>
-                )}
-
-                {/* Parse errors */}
-                {parseErrors.length > 0 && (
-                    <div role="alert" style={{
-                        padding: '8px 12px',
-                        borderRadius: 'var(--radius-sm)',
-                        fontSize: '0.75rem',
-                        color: 'var(--orange)',
-                        background: 'var(--orange-bg)',
-                        border: '1px solid rgba(255,149,0,0.2)',
-                    }}>
-                        <div style={{ fontWeight: 600, marginBottom: '4px' }}>解析警告</div>
-                        {parseErrors.map((e, i) => <div key={i}>· {e}</div>)}
-                    </div>
-                )}
             </div>
 
-            {/* ── Right Panel: Queue table ── */}
-            <div style={{ flexGrow: 1, minWidth: 0 }}>
-                {/* Filter tabs */}
+            {statusMsg && (
+                <div role={statusMsg.isError ? 'alert' : 'status'} className={`notice ${statusMsg.isError ? 'bad' : 'ok'}`}>
+                    {statusMsg.text}
+                </div>
+            )}
+
+            {parseErrors.length > 0 && (
+                <div role="alert" className="notice warn">
+                    <strong>解析警告</strong>
+                    <ul>{parseErrors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+                </div>
+            )}
+
+            <div>
                 {proposals.length > 0 && (
-                    <div style={{ display: 'flex', gap: '4px', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
-                        {FILTER_OPTIONS.map(({ key, label }) => {
-                            const isActive = activeFilter === key;
-                            return (
-                                <button
-                                    key={key}
-                                    type="button"
-                                    aria-pressed={isActive}
-                                    onClick={() => setActiveFilter(key)}
-                                    style={{
-                                        padding: '4px 12px',
-                                        borderRadius: 'var(--radius-sm)',
-                                        fontSize: '0.78rem',
-                                        fontWeight: isActive ? 600 : 400,
-                                        border: '1px solid',
-                                        borderColor: isActive ? 'var(--blue)' : 'var(--separator-opaque)',
-                                        background: isActive ? 'var(--blue-bg)' : 'var(--bg-tertiary)',
-                                        color: isActive ? 'var(--blue)' : 'var(--text-secondary)',
-                                        cursor: 'pointer',
-                                        transition: 'var(--transition)',
-                                    }}
-                                >
-                                    {label}
-                                    {counts[key] > 0 && (
-                                        <span style={{
-                                            marginLeft: '4px', fontSize: '0.68rem',
-                                            color: isActive ? 'var(--blue)' : 'var(--text-tertiary)',
-                                        }}>
-                                            {counts[key]}
-                                        </span>
-                                    )}
-                                </button>
-                            );
-                        })}
+                    <div className="segmented" role="group" aria-label="篩選解析結果">
+                        {FILTER_OPTIONS.map(({ key, label }) => (
+                            <button key={key} type="button" aria-pressed={activeFilter === key} onClick={() => setActiveFilter(key)}>
+                                {label}
+                                {counts[key] > 0 && <span className="count">{counts[key]}</span>}
+                            </button>
+                        ))}
                     </div>
                 )}
 
-                {/* Proposal table */}
                 {filteredProposals.length > 0 ? (
-                    <div className="table-container" style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <div className="table-wrap">
+                        <table>
                             <thead>
-                                <tr style={{ borderBottom: '1px solid var(--separator-opaque)' }}>
-                                    {['類型', '說明', '信心', '狀態', 'Ledger / 操作'].map(h => (
-                                        <th key={h} style={{
-                                            padding: '6px 10px',
-                                            textAlign: h === '信心' ? 'right' : 'left',
-                                            fontSize: '0.7rem',
-                                            fontWeight: 600,
-                                            color: 'var(--text-tertiary)',
-                                            textTransform: 'uppercase',
-                                            letterSpacing: '0.04em',
-                                            whiteSpace: 'nowrap',
-                                        }}>
-                                            {h}
-                                        </th>
-                                    ))}
-                                </tr>
+                                <tr><th>類型</th><th>內容</th><th className="n">信心</th><th>狀態</th><th className="n">事件／操作</th></tr>
                             </thead>
                             <tbody>
                                 {filteredProposals.map(p => (
@@ -595,21 +355,11 @@ export function AutomationTab({ active, apiFetch, onDataChange }: AutomationTabP
                         </table>
                     </div>
                 ) : proposals.length === 0 ? (
-                    /* Empty state */
-                    <div className="table-container" style={{ padding: '2.5rem', textAlign: 'center' }}>
-                        <p style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>
-                            輸入帳務文字後，AI 解析結果會在此顯示
-                        </p>
-                        <p style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem', marginTop: '0.5rem' }}>
-                            信心 ≥ 90% 且通過驗證的紀錄會自動入帳；其餘進待覆核佇列
-                        </p>
-                    </div>
+                    <p className="empty">解析結果會出現在這裡。信心 90% 以上且通過檢查的紀錄會直接入帳，其餘等你覆核。</p>
                 ) : (
-                    <div className="table-container" style={{ padding: '1.5rem', textAlign: 'center' }}>
-                        <p style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>此篩選條件無資料</p>
-                    </div>
+                    <p className="empty">這個篩選條件下沒有資料。</p>
                 )}
             </div>
-        </div>
+        </article>
     );
 }

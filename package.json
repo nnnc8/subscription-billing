@@ -20,10 +20,14 @@
     "test": "vitest run",
     "launchd:install": "node scripts/install-launchagent.cjs",
     "launchd:uninstall": "node scripts/uninstall-launchagent.cjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:vercel:offline": "node scripts/build-vercel-offline.mjs",
+    "smoke:vercel": "tsx scripts/vercel-function-smoke.mjs",
+    "test:libsql": "tsx scripts/test-libsql.ts",
+    "migrate:turso": "tsx scripts/migrate-to-turso.ts"
   },
   "dependencies": {
-    "better-sqlite3": "^12.10.1",
+    "@libsql/client": "0.18.0",
     "express": "^5.2.1",
     "lucide-react": "^1.20.0",
     "react": "^19.2.6",
@@ -37,7 +41,6 @@
     "@testing-library/dom": "10.4.1",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.1",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.6",
     "@types/node": "^25.9.3",
     "@types/react": "^19.2.15",
@@ -57,7 +60,6 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "better-sqlite3",
       "esbuild"
     ]
   }

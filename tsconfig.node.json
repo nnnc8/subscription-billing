@@ -16,5 +16,5 @@
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true
   },
-  "include": ["server.ts", "lib/**/*.ts", "scripts/**/*.ts", "src/types/**/*.ts"]
+  "include": ["server.ts", "server/**/*.ts", "api/**/*.ts", "lib/**/*.ts", "scripts/**/*.ts", "src/types/**/*.ts"]
 }

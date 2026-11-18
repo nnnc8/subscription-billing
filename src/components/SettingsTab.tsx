@@ -11,6 +11,7 @@ import type {
   ShowToast,
   SystemSnapshot,
 } from '../types/billing.js';
+import { Trash2, X } from 'lucide-react';
 import { Modal } from './ui/Modal.js';
 
 interface SettingsTabProps {
@@ -51,7 +52,8 @@ function formatBackupTimestamp(item: BackupInventoryItem): string {
 }
 
 function snapshotTone(snapshot: SystemSnapshot | undefined): string {
-  return snapshot?.health.status ?? 'risk';
+  const status = snapshot?.health.status ?? 'risk';
+  return status === 'clean' ? 'pos' : status === 'warning' ? 'warn' : 'neg';
 }
 
 function numericValue(value: string | undefined, fallback: number): number {
@@ -347,94 +349,197 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
     }
   }
 
-  return (
-    <>
-      <section className={`draft-console ${configDirty ? 'dirty' : 'clean'}`}>
-        <div className="draft-console-main"><span>設定草稿控制台</span><h2>{configDirty ? '尚有未落帳變更' : '目前與正式設定一致'}</h2><p>{configDirty ? `目前有 ${draftCount} 個變更只存在這個瀏覽器畫面。儲存後會一次寫入資料庫並留下事件。` : '目前畫面已和正式資料庫同步。'}</p></div>
-        <div className="draft-stat"><span>平台草稿</span><strong>{dirtyPlatformIds.length}</strong><small>費率或模式</small></div>
-        <div className="draft-stat"><span>成員草稿</span><strong>{dirtyMemberIds.length}</strong><small>餘額或特例月費</small></div>
-        <div className="draft-stat"><span>文字設定</span><strong>{Number(bankDirty) + Number(reminderDirty)}</strong><small>匯款資訊或語氣</small></div>
-        <div className="draft-actions-panel"><button type="button" className="btn btn-primary" onClick={() => void saveConfig()} disabled={!configDirty || configSaving}>{configSaving ? '寫入中...' : '一次寫入正式設定'}</button><button type="button" className="btn btn-secondary" onClick={clearDrafts} disabled={!configDirty || configSaving}>放棄草稿</button></div>
-      </section>
+  const activePlatformCount = data.platforms.filter((platform) => !isArchivedEntity(platform)).length;
+  const activeMemberCount = data.members.filter((member) => !isArchivedEntity(member)).length;
+  const customFeeCount = data.members.filter((member) => member.customFee !== null && !isArchivedEntity(member)).length;
+  const textDraftCount = Number(bankDirty) + Number(reminderDirty);
 
-      <div className="config-layout">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <section className="table-container" style={{ padding: '1.5rem' }}>
-            <h2>平台收費模式與定價設定</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>{data.platforms.map((platform) => {
+  return (
+    <div className="settings">
+      <div className={`draft-bar${configDirty ? ' dirty' : ''}`}>
+        <div>
+          <strong>{configDirty ? `${draftCount} 項變更還沒寫入` : '與正式設定一致'}</strong>
+          <p>{configDirty
+            ? `平台 ${dirtyPlatformIds.length}、成員 ${dirtyMemberIds.length}、文字 ${textDraftCount}。這些修改只在這台裝置上，寫入後會一次存進資料庫並留下事件。`
+            : '修改下方欄位時會先存成草稿，確認後再一次寫入。'}</p>
+        </div>
+        <div className="draft-actions">
+          <button type="button" className="btn" onClick={clearDrafts} disabled={!configDirty || configSaving}>放棄草稿</button>
+          <button type="button" className="btn btn-primary" onClick={() => void saveConfig()} disabled={!configDirty || configSaving}>{configSaving ? '寫入中...' : '一次寫入正式設定'}</button>
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">
+          <h2>平台與定價</h2>
+          <p>固定價格按人收費；動態均分把平台總價平分給本期計費中的名額，四捨五入到元。</p>
+          <dl>
+            <div><dt>使用中</dt><dd>{activePlatformCount} 個平台</dd></div>
+            <div><dt>已停用</dt><dd>{data.platforms.length - activePlatformCount} 個</dd></div>
+          </dl>
+        </div>
+        <div className="card">
+          <ul className="entity-list">
+            {data.platforms.map((platform) => {
               const archived = isArchivedEntity(platform);
               const draft = platformDrafts[platform.id];
               const mode = draft?.billingMode ?? platform.billingMode;
-              return <div key={platform.id} style={{ paddingBottom: '1rem', borderBottom: '1px solid var(--separator)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><strong>{platform.name}{archived && <span className="void-badge">已停用</span>}</strong><button type="button" className="btn btn-danger" onClick={() => void archiveEntity('platform', platform.id, platform.name)} disabled={archived}>{archived ? '已停用' : '停用平台'}</button></div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <div className="form-group"><label htmlFor={`platform-mode-${platform.id}`}>收費模式</label><select id={`platform-mode-${platform.id}`} className="form-control" value={mode} disabled={archived} onChange={(event) => setPlatformDrafts((current) => ({ ...current, [platform.id]: { ...current[platform.id], billingMode: event.target.value as Platform['billingMode'] } }))}><option value="fixed">固定價格 (按人)</option><option value="split">動態均分 (平台總價)</option></select></div>
-                  <div className="form-group"><label htmlFor={`platform-price-${platform.id}`}>{mode === 'split' ? '平台總月費' : '固定單人月費'} (NT$)</label><input id={`platform-price-${platform.id}`} type="number" className="form-control" disabled={archived} value={mode === 'split' ? draft?.totalCost ?? String(platform.totalCost) : draft?.price ?? String(platform.price)} onChange={(event) => setPlatformDrafts((current) => ({ ...current, [platform.id]: { ...current[platform.id], [mode === 'split' ? 'totalCost' : 'price']: event.target.value } }))} /></div>
-                </div>
-              </div>;
-            })}</div>
-          </section>
-
-          <section className="table-container" style={{ padding: '1.5rem' }}>
-            <h2>新增訂閱平台</h2>
-            <form onSubmit={handleAddPlatform} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div className="form-group"><label htmlFor="new-platform-name">平台名稱</label><input id="new-platform-name" className="form-control" value={newPlatformName} onChange={(event) => setNewPlatformName(event.target.value)} required /></div>
-              <div className="form-group"><label htmlFor="new-platform-mode">收費模式</label><select id="new-platform-mode" className="form-control" value={newPlatformMode} onChange={(event) => setNewPlatformMode(event.target.value as Platform['billingMode'])}><option value="fixed">固定價格 (按人)</option><option value="split">動態均分 (平台總價)</option></select></div>
-              <div className="form-group"><label htmlFor="new-platform-price">{newPlatformMode === 'split' ? '平台總月費' : '固定單人月費'} (NT$)</label><input id="new-platform-price" type="number" className="form-control" value={newPlatformMode === 'split' ? newPlatformTotal : newPlatformPrice} onChange={(event) => newPlatformMode === 'split' ? setNewPlatformTotal(event.target.value) : setNewPlatformPrice(event.target.value)} /></div>
-              <button type="submit" className="btn btn-secondary">建立平台</button>
+              return (
+                <li key={platform.id} className="entity-row">
+                  <div className="entity-title">
+                    <strong>{platform.name}{archived && <span className="pill">已停用</span>}</strong>
+                    <button type="button" className="btn btn-ghost btn-danger" onClick={() => void archiveEntity('platform', platform.id, platform.name)} disabled={archived}>{archived ? '已停用' : '停用平台'}</button>
+                  </div>
+                  <div className="field-pair">
+                    <div className="field"><label htmlFor={`platform-mode-${platform.id}`}>收費模式</label><select id={`platform-mode-${platform.id}`} className="input" value={mode} disabled={archived} onChange={(event) => setPlatformDrafts((current) => ({ ...current, [platform.id]: { ...current[platform.id], billingMode: event.target.value as Platform['billingMode'] } }))}><option value="fixed">固定價格 (按人)</option><option value="split">動態均分 (平台總價)</option></select></div>
+                    <div className="field"><label htmlFor={`platform-price-${platform.id}`}>{mode === 'split' ? '平台總月費' : '固定單人月費'} (NT$)</label><input id={`platform-price-${platform.id}`} type="number" inputMode="numeric" className="input" disabled={archived} value={mode === 'split' ? draft?.totalCost ?? String(platform.totalCost) : draft?.price ?? String(platform.price)} onChange={(event) => setPlatformDrafts((current) => ({ ...current, [platform.id]: { ...current[platform.id], [mode === 'split' ? 'totalCost' : 'price']: event.target.value } }))} /></div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="card-split">
+            <h3>新增平台</h3>
+            <form className="inline-form" onSubmit={handleAddPlatform}>
+              <div className="field"><label htmlFor="new-platform-name">平台名稱</label><input id="new-platform-name" className="input" value={newPlatformName} onChange={(event) => setNewPlatformName(event.target.value)} required /></div>
+              <div className="field"><label htmlFor="new-platform-mode">收費模式</label><select id="new-platform-mode" className="input" value={newPlatformMode} onChange={(event) => setNewPlatformMode(event.target.value as Platform['billingMode'])}><option value="fixed">固定價格 (按人)</option><option value="split">動態均分 (平台總價)</option></select></div>
+              <div className="field"><label htmlFor="new-platform-price">{newPlatformMode === 'split' ? '平台總月費' : '固定單人月費'} (NT$)</label><input id="new-platform-price" type="number" inputMode="numeric" className="input" value={newPlatformMode === 'split' ? newPlatformTotal : newPlatformPrice} onChange={(event) => newPlatformMode === 'split' ? setNewPlatformTotal(event.target.value) : setNewPlatformPrice(event.target.value)} /></div>
+              <button type="submit" className="btn">建立平台</button>
             </form>
-          </section>
-
-          <section className="table-container" style={{ padding: '1.5rem' }}>
-            <h2>通知腳本與匯款設定</h2>
-            <div className="form-group"><label htmlFor="bank-info">匯款帳戶資訊</label><textarea id="bank-info" className="form-control" rows={2} value={bankInfo} onChange={(event) => setBankDraft(event.target.value)} /></div>
-            <div className="form-group"><label htmlFor="reminder-style">催帳訊息風格</label><select id="reminder-style" className="form-control" value={reminderStyle} onChange={(event) => setReminderStyleDraft(event.target.value)}><option value="friendly">幽默親友風</option><option value="formal">正式對帳風</option><option value="minimal">極簡親友風</option></select></div>
-          </section>
-
-          <section className="table-container recovery-console">
-            <div className="recovery-header"><div><span>Recovery</span><h2>資料備份與還原</h2></div><button type="button" className="btn btn-secondary" onClick={() => { setBackupOpen((open) => !open); if (!backupOpen) void loadBackups(); }}>{backupOpen ? '收合' : '管理備份'}</button></div>
-            {backupOpen && <div className="recovery-body">
-              {recoveryStatus && <div className={`recovery-current ${snapshotTone(recoveryStatus)}`}><div><span>目前狀態</span><strong>{recoveryStatus.currentMonth} · {recoveryStatus.health.label}</strong><small>{recoveryStatus.health.warningCount} 個提醒</small></div><div><span>待收</span><strong>{formatMoney(recoveryStatus.totals.receivable)}</strong><small>{recoveryStatus.totals.unpaidMembers} 人未結清</small></div><div><span>指紋</span><code>{recoveryStatus.fingerprint.slice(0, 12)}</code><small>{recoveryStatus.counts.ledger} 筆事件</small></div></div>}
-              <button type="button" className="btn btn-secondary recovery-create" onClick={() => void createBackup()} disabled={backupLoading}>{backupLoading ? '處理中...' : '建立目前狀態備份'}</button>
-              {/* Server backups share the database's disk; a periodic download is the off-site copy. */}
-              <a className="btn btn-secondary recovery-create recovery-download" href="/api/export-json" download>下載完整資料（JSON）到這台裝置</a>
-              {backups.length === 0 ? <p className="recovery-empty">暫無備份記錄</p> : <div className="recovery-list">{backups.map((backup) => <div key={backup.filename} className={`recovery-item ${snapshotTone(backup.snapshot)}`}><div className="recovery-item-main"><div className="recovery-item-title"><span>{formatBackupTimestamp(backup)}</span><strong>{backup.readable ? backup.snapshot?.health.label : '無法讀取'}</strong></div><div className="recovery-item-meta"><span>{backup.readable ? `${backup.snapshot?.currentMonth} 帳期` : backup.error}</span><span>{(backup.size / 1024).toFixed(1)} KB</span></div><p>{backup.restoreImpact.summary}</p></div><div className="recovery-actions"><button type="button" className="btn btn-success" onClick={() => setSelectedBackup(backup)} disabled={backupLoading || !backup.readable}>還原</button><button type="button" className="btn btn-danger btn-icon-only" aria-label={`刪除備份 ${backup.filename}`} onClick={() => void deleteBackup(backup.filename)} disabled={backupLoading}>×</button></div></div>)}</div>}
-            </div>}
-          </section>
-
-          <section className="table-container" style={{ padding: '1.25rem' }}>
-            <h2>帳期管理</h2>
-            {lifecycle ? <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}><div><span>目前帳期</span><strong style={{ display: 'block' }}>{lifecycle.currentMonth}</strong></div><div><span>系統月份（台北）</span><strong style={{ display: 'block' }}>{lifecycle.systemMonth} · {lifecycle.isCurrent ? '已同步' : '待自動更新'}</strong></div>{lifecycle.lastAdvancedAt && <div style={{ gridColumn: '1 / -1' }}><span>上次自動推進</span><p>{lifecycle.lastAdvancedFrom} → {lifecycle.lastAdvancedTo} · {new Date(lifecycle.lastAdvancedAt).toLocaleString('zh-TW')}</p></div>}{lifecycle.blockedReason && <p style={{ gridColumn: '1 / -1', color: 'var(--red)' }}>{lifecycle.blockedReason}</p>}</div> : <p role={lifecycleError ? 'alert' : 'status'}>{lifecycleError || '載入帳期狀態中…'}</p>}
-            <p style={{ color: 'var(--text-muted)', marginBottom: 0 }}>帳期由系統依台北時間自動推進；正常操作不提供手動跳月，舊帳期只在歷史紀錄中唯讀瀏覽。</p>
-          </section>
+          </div>
         </div>
+      </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <section className="table-container" style={{ padding: '1.5rem' }}>
-            <h2>成員名單、期初餘額與特例月費</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>{data.members.map((member) => {
+      <div className="settings-section">
+        <div className="settings-label">
+          <h2>成員與期初餘額</h2>
+          <p>期初餘額是第一個帳期之前的欠款或預繳；自訂月費有值時，會取代該成員所有名額的月費。</p>
+          <dl>
+            <div><dt>使用中</dt><dd>{activeMemberCount} 位成員</dd></div>
+            <div><dt>自訂月費</dt><dd>{customFeeCount} 位</dd></div>
+          </dl>
+        </div>
+        <div className="card">
+          <ul className="entity-list">
+            {data.members.map((member) => {
               const archived = isArchivedEntity(member);
               const draft = memberDrafts[member.id];
-              return <div key={member.id} style={{ paddingBottom: '1rem', borderBottom: '1px solid var(--separator)' }}><div style={{ display: 'flex', justifyContent: 'space-between' }}><strong>{member.name}{archived && <span className="void-badge">已停用</span>}</strong><button type="button" className="btn btn-danger" onClick={() => void archiveEntity('member', member.id, member.name)} disabled={archived}>{archived ? '已停用' : '停用成員'}</button></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}><div className="form-group"><label htmlFor={`member-prior-${member.id}`}>前期餘額 (期初)</label><input id={`member-prior-${member.id}`} type="number" className="form-control" disabled={archived} value={draft?.priorBalance ?? String(member.priorBalance)} onChange={(event) => setMemberDrafts((current) => ({ ...current, [member.id]: { ...current[member.id], priorBalance: event.target.value } }))} /></div><div className="form-group"><label htmlFor={`member-fee-${member.id}`}>自訂月費 (特例)</label><input id={`member-fee-${member.id}`} type="number" className="form-control" disabled={archived} value={draft?.customFee ?? String(member.customFee ?? '')} onChange={(event) => setMemberDrafts((current) => ({ ...current, [member.id]: { ...current[member.id], customFee: event.target.value } }))} /></div></div></div>;
-            })}</div>
-          </section>
-
-          <section className="table-container" style={{ padding: '1.5rem' }}>
-            <h2>新增成員</h2>
-            <form onSubmit={handleAddMember} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div className="form-group"><label htmlFor="new-member-name">成員姓名</label><input id="new-member-name" className="form-control" value={newMemberName} onChange={(event) => setNewMemberName(event.target.value)} required /></div>
-              <div className="form-group"><label htmlFor="new-member-prior">期初餘額 (NT$)</label><input id="new-member-prior" type="number" className="form-control" value={newMemberPrior} onChange={(event) => setNewMemberPrior(event.target.value)} /></div>
-              <div className="form-group"><label htmlFor="new-member-custom">自訂月費 (非必填)</label><input id="new-member-custom" type="number" className="form-control" value={newMemberCustom} onChange={(event) => setNewMemberCustom(event.target.value)} /></div>
-              <button type="submit" className="btn btn-secondary">建立成員</button>
+              return (
+                <li key={member.id} className="entity-row">
+                  <div className="entity-title">
+                    <strong>{member.name}{archived && <span className="pill">已停用</span>}</strong>
+                    <button type="button" className="btn btn-ghost btn-danger" onClick={() => void archiveEntity('member', member.id, member.name)} disabled={archived}>{archived ? '已停用' : '停用成員'}</button>
+                  </div>
+                  <div className="field-pair">
+                    <div className="field"><label htmlFor={`member-prior-${member.id}`}>前期餘額 (期初)</label><input id={`member-prior-${member.id}`} type="number" inputMode="numeric" className="input" disabled={archived} value={draft?.priorBalance ?? String(member.priorBalance)} onChange={(event) => setMemberDrafts((current) => ({ ...current, [member.id]: { ...current[member.id], priorBalance: event.target.value } }))} /></div>
+                    <div className="field"><label htmlFor={`member-fee-${member.id}`}>自訂月費 (特例)</label><input id={`member-fee-${member.id}`} type="number" inputMode="numeric" className="input" placeholder="依名額計算" disabled={archived} value={draft?.customFee ?? String(member.customFee ?? '')} onChange={(event) => setMemberDrafts((current) => ({ ...current, [member.id]: { ...current[member.id], customFee: event.target.value } }))} /></div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="card-split">
+            <h3>新增成員</h3>
+            <form className="inline-form" onSubmit={handleAddMember}>
+              <div className="field"><label htmlFor="new-member-name">成員姓名</label><input id="new-member-name" className="input" value={newMemberName} onChange={(event) => setNewMemberName(event.target.value)} required /></div>
+              <div className="field"><label htmlFor="new-member-prior">期初餘額 (NT$)</label><input id="new-member-prior" type="number" inputMode="numeric" className="input" value={newMemberPrior} onChange={(event) => setNewMemberPrior(event.target.value)} /></div>
+              <div className="field"><label htmlFor="new-member-custom">自訂月費 (非必填)</label><input id="new-member-custom" type="number" inputMode="numeric" className="input" value={newMemberCustom} onChange={(event) => setNewMemberCustom(event.target.value)} /></div>
+              <button type="submit" className="btn">建立成員</button>
             </form>
-          </section>
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">
+          <h2>催繳訊息與匯款資訊</h2>
+          <p>送出 LINE 帳單和複製腳本時，會帶上這裡的匯款資訊與語氣。</p>
+        </div>
+        <div className="card form-stack">
+          <div className="field"><label htmlFor="bank-info">匯款帳戶資訊</label><textarea id="bank-info" className="input" rows={3} value={bankInfo} onChange={(event) => setBankDraft(event.target.value)} /></div>
+          <div className="field"><label htmlFor="reminder-style">催帳訊息風格</label><select id="reminder-style" className="input" value={reminderStyle} onChange={(event) => setReminderStyleDraft(event.target.value)}><option value="friendly">幽默親友風</option><option value="formal">正式對帳風</option><option value="minimal">極簡親友風</option></select></div>
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">
+          <h2>備份與還原</h2>
+          <p>每次寫入前系統會自動備份。還原前也會先備份目前資料，所以還原可以再退回。伺服器備份和資料庫在同一處，請定期下載一份到自己的裝置。</p>
+        </div>
+        <div className="card">
+          {!backupOpen ? (
+            <div className="entity-title">
+              <span className="meta">備份清單收合中</span>
+              <button type="button" className="btn" onClick={() => { setBackupOpen(true); void loadBackups(); }}>管理備份</button>
+            </div>
+          ) : (
+            <>
+              <div className="entity-title">
+                <strong>目前資料</strong>
+                <button type="button" className="btn btn-ghost" onClick={() => setBackupOpen(false)}>收合</button>
+              </div>
+              {recoveryStatus && (
+                <dl className="facts card-split">
+                  <div><dt>帳期與狀態</dt><dd>{recoveryStatus.currentMonth} · {recoveryStatus.health.label}<small>{recoveryStatus.health.warningCount} 則提醒</small></dd></div>
+                  <div><dt>待收</dt><dd>{formatMoney(recoveryStatus.totals.receivable)}<small>{recoveryStatus.totals.unpaidMembers} 人未結清</small></dd></div>
+                  <div><dt>資料指紋</dt><dd><code>{recoveryStatus.fingerprint.slice(0, 12)}</code><small>{recoveryStatus.counts.ledger} 筆事件</small></dd></div>
+                </dl>
+              )}
+              <div className="backup-actions">
+                <button type="button" className="btn" onClick={() => void createBackup()} disabled={backupLoading}>{backupLoading ? '處理中...' : '建立目前狀態備份'}</button>
+                {/* Server backups share the database's disk; a periodic download is the off-site copy. */}
+                <a className="btn" href="/api/export-json" download>下載完整資料（JSON）到這台裝置</a>
+              </div>
+              {backups.length === 0 ? <p className="empty card-split">還沒有備份。寫入任何帳務後，系統會自動建立第一份。</p> : (
+                <ul className="backup-list">
+                  {backups.map((backup) => (
+                    <li key={backup.filename}>
+                      <div className="backup-text">
+                        <strong>{formatBackupTimestamp(backup)}<span className={`pill ${backup.readable ? snapshotTone(backup.snapshot) : 'neg'}`}>{backup.readable ? backup.snapshot?.health.label : '無法讀取'}</span></strong>
+                        <span>{backup.readable ? `${backup.snapshot?.currentMonth} 帳期` : backup.error} · {(backup.size / 1024).toFixed(1)} KB</span>
+                        <span>{backup.restoreImpact.summary}</span>
+                      </div>
+                      <div className="backup-row-actions">
+                        <button type="button" className="btn" onClick={() => setSelectedBackup(backup)} disabled={backupLoading || !backup.readable}>還原</button>
+                        <button type="button" className="icon-btn" aria-label={`刪除備份 ${backup.filename}`} onClick={() => void deleteBackup(backup.filename)} disabled={backupLoading}><Trash2 size={16} /></button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">
+          <h2>帳期</h2>
+          <p>帳期依台北時間自動推進，不提供手動跳月；過去的帳期只能在歷史紀錄裡唯讀查看。</p>
+        </div>
+        <div className="card">
+          {lifecycle ? (
+            <dl className="facts">
+              <div><dt>目前帳期</dt><dd>{lifecycle.currentMonth}</dd></div>
+              <div><dt>系統月份（台北）</dt><dd>{lifecycle.systemMonth}<small>{lifecycle.isCurrent ? '已同步' : '待自動更新'}</small></dd></div>
+              <div><dt>上次自動推進</dt><dd>{lifecycle.lastAdvancedAt ? `${lifecycle.lastAdvancedFrom} → ${lifecycle.lastAdvancedTo}` : '尚未推進'}{lifecycle.lastAdvancedAt && <small>{new Date(lifecycle.lastAdvancedAt).toLocaleString('zh-TW', { hour12: false })}</small>}</dd></div>
+            </dl>
+          ) : <p role={lifecycleError ? 'alert' : 'status'} className="meta">{lifecycleError || '載入帳期狀態中…'}</p>}
+          {lifecycle?.blockedReason && <p className="notice bad card-split">{lifecycle.blockedReason}</p>}
         </div>
       </div>
 
       <Modal open={Boolean(selectedBackup)} onClose={() => setSelectedBackup(undefined)} labelledBy="restore-modal-title" initialFocusRef={restoreCancelRef}>
-        <div className="modal-header"><h2 id="restore-modal-title" className="modal-title">確認還原備份</h2><button type="button" className="modal-close" aria-label="關閉還原確認" onClick={() => setSelectedBackup(undefined)}>×</button></div>
-        {selectedBackup && <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}><p>將還原至 <strong>{formatBackupTimestamp(selectedBackup)}</strong>（{selectedBackup.snapshot?.currentMonth} 帳期）。</p><p>{selectedBackup.restoreImpact.summary}</p><p>目前資料會先自動備份，再執行還原。</p><div style={{ display: 'flex', gap: '0.75rem' }}><button ref={restoreCancelRef} type="button" className="btn btn-secondary" onClick={() => setSelectedBackup(undefined)} disabled={backupLoading}>取消</button><button type="button" className="btn btn-danger" onClick={() => void restoreBackup()} disabled={backupLoading}>{backupLoading ? '還原中...' : '確認還原'}</button></div></div>}
+        <div className="modal-head"><h2 id="restore-modal-title" className="modal-title">確認還原備份</h2><button type="button" className="icon-btn" aria-label="關閉還原確認" onClick={() => setSelectedBackup(undefined)}><X size={18} /></button></div>
+        {selectedBackup && (
+          <div className="modal-body">
+            <p>將還原至 <strong>{formatBackupTimestamp(selectedBackup)}</strong>（{selectedBackup.snapshot?.currentMonth} 帳期）。</p>
+            <p>{selectedBackup.restoreImpact.summary}</p>
+            <p className="hint">目前資料會先自動備份，再執行還原。</p>
+            <div className="modal-actions"><button ref={restoreCancelRef} type="button" className="btn" onClick={() => setSelectedBackup(undefined)} disabled={backupLoading}>取消</button><button type="button" className="btn btn-primary" onClick={() => void restoreBackup()} disabled={backupLoading}>{backupLoading ? '還原中...' : '確認還原'}</button></div>
+          </div>
+        )}
       </Modal>
-    </>
+    </div>
   );
 }
