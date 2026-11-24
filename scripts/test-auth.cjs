@@ -217,8 +217,12 @@ async function main() {
             assert.strictEqual(authLocation.searchParams.get('response_type'), 'code');
             assert.strictEqual(authLocation.searchParams.get('scope'), 'openid email profile');
             assert.strictEqual(authLocation.searchParams.get('redirect_uri'), `${baseUrl}/api/auth/callback`);
-            assert.strictEqual(authLocation.searchParams.get('login_hint'), allowedEmail);
-            assert.strictEqual(authLocation.searchParams.get('prompt'), null);
+            // A visitor with no session receives this redirect, so it must not carry the
+            // allow-listed address, and it always asks Google for the account chooser.
+            assert.strictEqual(authLocation.searchParams.get('login_hint'), null);
+            assert.strictEqual(authLocation.searchParams.get('prompt'), 'select_account');
+            assert(!login.headers.get('location').includes(encodeURIComponent(allowedEmail)));
+            assert(!login.headers.get('location').includes(allowedEmail));
             assert(authLocation.searchParams.get('state'));
             const stateCookie = cookieValue(login.headers.getSetCookie(), OAUTH_STATE_COOKIE_NAME);
             assert.strictEqual(stateCookie, authLocation.searchParams.get('state'));
@@ -228,6 +232,19 @@ async function main() {
                 headers: { Cookie: `${OAUTH_STATE_COOKIE_NAME}=${stateCookie}` }
             });
             assert.strictEqual(wrongState.status, 400);
+            assert.deepStrictEqual(await wrongState.json(), { error: 'Invalid OAuth state' });
+
+            const browserAccept = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+            const wrongStateInBrowser = await fetch(`${baseUrl}/api/auth/callback?code=ok&state=bad`, {
+                redirect: 'manual',
+                headers: { Accept: browserAccept, Cookie: `${OAUTH_STATE_COOKIE_NAME}=${stateCookie}` }
+            });
+            assert.strictEqual(wrongStateInBrowser.status, 400);
+            assert(wrongStateInBrowser.headers.get('content-type').startsWith('text/html'));
+            assert.strictEqual(wrongStateInBrowser.headers.get('cache-control'), 'no-store');
+            const wrongStatePage = await wrongStateInBrowser.text();
+            assert(wrongStatePage.includes('href="/api/auth/login"'));
+            assert(!wrongStatePage.includes(allowedEmail));
 
             fakeGoogle.state.nextProfile = {
                 sub: 'google-user-2',
@@ -240,6 +257,24 @@ async function main() {
                 headers: { Cookie: `${OAUTH_STATE_COOKIE_NAME}=${stateCookie}` }
             });
             assert.strictEqual(blocked.status, 403);
+            assert.deepStrictEqual(await blocked.json(), { error: 'Google account is not allowed' });
+            assert(!blocked.headers.getSetCookie().some(item => item.startsWith(`${SESSION_COOKIE_NAME}=`)));
+
+            // In a browser the refused person sees which account Google used and a link that
+            // starts sign-in again. No session is issued and the allow-list stays private.
+            const blockedInBrowser = await fetch(`${baseUrl}/api/auth/callback?code=blocked-code&state=${stateCookie}`, {
+                redirect: 'manual',
+                headers: { Accept: browserAccept, Cookie: `${OAUTH_STATE_COOKIE_NAME}=${stateCookie}` }
+            });
+            assert.strictEqual(blockedInBrowser.status, 403);
+            assert(blockedInBrowser.headers.get('content-type').startsWith('text/html'));
+            assert.strictEqual(blockedInBrowser.headers.get('cache-control'), 'no-store');
+            assert(!blockedInBrowser.headers.getSetCookie().some(item => item.startsWith(`${SESSION_COOKIE_NAME}=`)));
+            const blockedPage = await blockedInBrowser.text();
+            assert(blockedPage.includes(blockedEmail));
+            assert(blockedPage.includes('href="/api/auth/login"'));
+            assert(!blockedPage.includes(allowedEmail));
+            assert(!blockedPage.includes('<script'));
 
             const secondLogin = await fetch(`${baseUrl}/api/auth/login`, { redirect: 'manual' });
             const secondState = cookieValue(secondLogin.headers.getSetCookie(), OAUTH_STATE_COOKIE_NAME);

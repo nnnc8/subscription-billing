@@ -1,10 +1,11 @@
 import type { AddressInfo } from 'node:net';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { monthToCode } from '../lib/accounting.js';
-import { SESSION_COOKIE_NAME, createSessionCookieValue } from '../lib/auth.js';
+import { OAUTH_STATE_COOKIE_NAME, SESSION_COOKIE_NAME, createSessionCookieValue } from '../lib/auth.js';
 import { getSystemMonth } from '../lib/lifecycle.js';
 import { createApp } from '../server/app.js';
 import type { Database, Subscription } from '../src/types/billing.js';
@@ -234,6 +235,86 @@ describe('native fetch integration across route groups', () => {
             expect(configured.status).toBe(200);
             expect(configured.headers.get('access-control-allow-origin')).toBe('https://allowed.example');
         });
+    });
+    it('gives a refused Google account a page with a way to switch, and keeps JSON for API clients', async () => {
+        const refusedEmail = 'someone.else@example.com';
+        const browserAccept = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+        const google = http.createServer((req, res) => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(req.url === '/token'
+                ? { access_token: 'fake-access-token', token_type: 'Bearer' }
+                : { email: refusedEmail, email_verified: true, name: 'Someone Else' }));
+        });
+        await new Promise<void>((resolve, reject) => {
+            google.once('error', reject);
+            google.listen(0, '127.0.0.1', resolve);
+        });
+        const googleUrl = `http://127.0.0.1:${(google.address() as AddressInfo).port}`;
+        try {
+            const runtime = (await createTestRuntime({
+                PUBLIC_ORIGIN: 'https://billing.example',
+                GOOGLE_OAUTH_TOKEN_URL: `${googleUrl}/token`,
+                GOOGLE_OAUTH_USERINFO_URL: `${googleUrl}/userinfo`
+            }));
+            await withApp(runtime, async (baseUrl) => {
+                const login = await fetch(`${baseUrl}/api/auth/login`, { redirect: 'manual' });
+                expect(login.status).toBe(302);
+                const location = login.headers.get('location') ?? '';
+                const authUrl = new URL(location);
+                expect(authUrl.searchParams.get('prompt')).toBe('select_account');
+                expect(authUrl.searchParams.has('login_hint')).toBe(false);
+                expect(decodeURIComponent(location)).not.toContain(allowedEmail);
+
+                const state = authUrl.searchParams.get('state') ?? '';
+                expect(state).not.toBe('');
+                const stateCookie = `${OAUTH_STATE_COOKIE_NAME}=${state}`;
+                const callbackUrl = `${baseUrl}/api/auth/callback?code=any-code&state=${state}`;
+                const hasSessionCookie = (response: Response) => response.headers.getSetCookie()
+                    .some(cookie => cookie.startsWith(`${SESSION_COOKIE_NAME}=`));
+
+                const refusedApi = await fetch(callbackUrl, { redirect: 'manual', headers: { Cookie: stateCookie } });
+                expect(refusedApi.status).toBe(403);
+                expect(hasSessionCookie(refusedApi)).toBe(false);
+                expect(await json(refusedApi)).toEqual({ error: 'Google account is not allowed' });
+
+                const refusedPage = await fetch(callbackUrl, {
+                    redirect: 'manual',
+                    headers: { Cookie: stateCookie, Accept: browserAccept }
+                });
+                expect(refusedPage.status).toBe(403);
+                expect(refusedPage.headers.get('content-type')).toContain('text/html');
+                expect(refusedPage.headers.get('cache-control')).toBe('no-store');
+                expect(hasSessionCookie(refusedPage)).toBe(false);
+                const refusedHtml = await refusedPage.text();
+                expect(refusedHtml).toContain(refusedEmail);
+                expect(refusedHtml).toContain('href="/api/auth/login"');
+                expect(refusedHtml).not.toContain(allowedEmail);
+                expect(refusedHtml).not.toContain('<script');
+
+                const cancelledPage = await fetch(`${baseUrl}/api/auth/callback?error=access_denied&state=${state}`, {
+                    redirect: 'manual',
+                    headers: { Cookie: stateCookie, Accept: browserAccept }
+                });
+                expect(cancelledPage.status).toBe(400);
+                expect(cancelledPage.headers.get('content-type')).toContain('text/html');
+                expect(cancelledPage.headers.get('cache-control')).toBe('no-store');
+                const cancelledHtml = await cancelledPage.text();
+                expect(cancelledHtml).toContain('href="/api/auth/login"');
+                expect(cancelledHtml).not.toContain(refusedEmail);
+                expect(cancelledHtml).not.toContain(allowedEmail);
+
+                const wrongStateApi = await fetch(`${baseUrl}/api/auth/callback?code=any-code&state=other`, {
+                    redirect: 'manual',
+                    headers: { Cookie: stateCookie }
+                });
+                expect(wrongStateApi.status).toBe(400);
+                expect(await json(wrongStateApi)).toEqual({ error: 'Invalid OAuth state' });
+            });
+        }
+        finally {
+            google.closeAllConnections();
+            await new Promise<void>(resolve => { google.close(() => resolve()); });
+        }
     });
     it('uses Express 5 async rejection handling and hides internal 500 details', async () => {
         const runtime = (await createTestRuntime());

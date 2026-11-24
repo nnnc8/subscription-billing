@@ -100,12 +100,11 @@ export function buildGoogleAuthUrl({ config, redirectUri, state }: { config: Goo
     url.searchParams.set('scope', GOOGLE_SCOPE);
     url.searchParams.set('state', state);
     url.searchParams.set('access_type', 'online');
-    if (config.allowedEmails.size === 1) {
-        const [allowedEmail] = config.allowedEmails;
-        if (allowedEmail) url.searchParams.set('login_hint', allowedEmail);
-    } else {
-        url.searchParams.set('prompt', 'select_account');
-    }
+    // Always ask Google for its account chooser. Without it Google silently reuses the Google
+    // session of the browser, so a person signed in to another account is refused on every
+    // attempt and cannot switch. No login_hint is sent: this URL goes to visitors who have no
+    // session, and a hint would disclose an allow-listed address to them.
+    url.searchParams.set('prompt', 'select_account');
     return url.toString();
 }
 

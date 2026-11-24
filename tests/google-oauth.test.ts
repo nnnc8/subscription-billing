@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { exchangeGoogleCode, fetchGoogleUserinfo } from '../lib/google-oauth.js';
+import { GOOGLE_SCOPE, buildGoogleAuthUrl, exchangeGoogleCode, fetchGoogleUserinfo, isAllowedGoogleUser } from '../lib/google-oauth.js';
 import type { GoogleOAuthConfig } from '../src/types/billing.js';
 
 const config: GoogleOAuthConfig = {
@@ -57,5 +57,45 @@ describe('Google OAuth external response validation', () => {
             accessToken: 'access-token',
             fetchImpl: vi.fn(async () => response({ email: 'owner@example.com', email_verified: 'true' })) as unknown as typeof fetch
         })).rejects.toMatchObject({ status: 502 });
+    });
+});
+
+describe('Google sign-in redirect', () => {
+    it('asks for the account chooser and never carries an allow-listed address', () => {
+        const allowLists = [
+            new Set(['owner@example.com']),
+            new Set(['owner@example.com', 'second@example.com'])
+        ];
+        for (const allowedEmails of allowLists) {
+            const location = buildGoogleAuthUrl({
+                config: { ...config, allowedEmails },
+                redirectUri: config.redirectUri,
+                state: 'state-value'
+            });
+            const url = new URL(location);
+
+            expect(`${url.origin}${url.pathname}`).toBe(config.authUrl);
+            expect(url.searchParams.get('client_id')).toBe('client-id');
+            expect(url.searchParams.get('redirect_uri')).toBe(config.redirectUri);
+            expect(url.searchParams.get('response_type')).toBe('code');
+            expect(url.searchParams.get('scope')).toBe(GOOGLE_SCOPE);
+            expect(url.searchParams.get('state')).toBe('state-value');
+            expect(url.searchParams.get('prompt')).toBe('select_account');
+            expect(url.searchParams.has('login_hint')).toBe(false);
+            for (const email of allowedEmails) {
+                expect(decodeURIComponent(location)).not.toContain(email);
+            }
+        }
+    });
+
+    it('admits only a verified address that is on the allow-list', () => {
+        const allowedEmails = new Set(['owner@example.com']);
+
+        expect(isAllowedGoogleUser({ email: 'Owner@Example.com', email_verified: true }, allowedEmails)).toBe(true);
+        expect(isAllowedGoogleUser({ email: 'owner@example.com', email_verified: false }, allowedEmails)).toBe(false);
+        expect(isAllowedGoogleUser({ email: 'owner@example.com' }, allowedEmails)).toBe(false);
+        expect(isAllowedGoogleUser({ email: 'other@example.com', email_verified: true }, allowedEmails)).toBe(false);
+        expect(isAllowedGoogleUser({ email_verified: true }, allowedEmails)).toBe(false);
+        expect(isAllowedGoogleUser(null, allowedEmails)).toBe(false);
     });
 });

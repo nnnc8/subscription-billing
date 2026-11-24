@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Request, Response } from 'express';
 import { z } from 'zod';
 import {
     OAUTH_STATE_COOKIE_NAME,
@@ -23,11 +24,26 @@ import {
 } from '../middleware/auth.js';
 import { emptyPayloadSchema, parseInput } from '../middleware/validation.js';
 import type { Runtime } from '../runtime.js';
+import { renderSignInProblemPage, type SignInProblemPage } from '../sign-in-page.js';
 
 const callbackQuerySchema = z.object({
     code: z.string().min(1),
     state: z.string().min(1)
 });
+
+// Google sends the person back to the callback as a page navigation. A JSON body there is a
+// dead end, so a browser gets a page with a link that starts sign-in again. Scripts and other
+// API clients keep the JSON body, and the status code is the same for both.
+function sendSignInProblem(req: Request, res: Response, status: number, error: string, page: SignInProblemPage): void {
+    res.status(status);
+    res.vary('Accept');
+    if (req.accepts(['json', 'html']) !== 'html') {
+        res.json({ error });
+        return;
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.type('html').send(renderSignInProblemPage(page));
+}
 
 export function createAuthRuntimeRouter(runtime: Runtime): Router {
     const router = Router();
@@ -90,7 +106,11 @@ export function createAuthRuntimeRouter(runtime: Runtime): Router {
         const stateCookie = parseCookies(req)[OAUTH_STATE_COOKIE_NAME];
         if (!parsed.success || !stateCookie || stateCookie !== parsed.data.state) {
             res.setHeader('Set-Cookie', clearOAuthStateCookie(runtime));
-            res.status(400).json({ error: 'Invalid OAuth state' });
+            sendSignInProblem(req, res, 400, 'Invalid OAuth state', {
+                heading: '登入沒有完成',
+                detail: '這次登入已經逾時，或是在中途取消了。請重新登入。',
+                action: '重新登入'
+            });
             return;
         }
 
@@ -101,7 +121,14 @@ export function createAuthRuntimeRouter(runtime: Runtime): Router {
             const profile = await fetchGoogleUserinfo({ config, accessToken: String(token.access_token) });
             if (!isAllowedGoogleUser(profile, config.allowedEmails)) {
                 res.setHeader('Set-Cookie', clearOAuthStateCookie(runtime));
-                res.status(403).json({ error: 'Google account is not allowed' });
+                // The address is shown only to the person who just signed in to Google with it,
+                // so they can tell that the browser used a different account than they expected.
+                sendSignInProblem(req, res, 403, 'Google account is not allowed', {
+                    heading: '這個 Google 帳號不能登入',
+                    detail: '這個帳號沒有使用權限。請改用已獲准的 Google 帳號登入。',
+                    action: '改用其他帳號登入',
+                    ...(typeof profile.email === 'string' ? { account: profile.email } : {})
+                });
                 return;
             }
 
