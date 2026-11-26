@@ -5,12 +5,14 @@ import { fileURLToPath } from 'node:url';
 import {
   findRecentDuplicateTransaction,
   findAccountingWarnings,
+  findFirstDuplicateSubscriptionMonth,
   getClosePreview,
   getHistoryIntegrity,
   getSystemSnapshot,
+  monthToCode,
   normalizeDatabaseRelations
 } from '../lib/accounting.js';
-import type { AuditWarning, Database, Payment, TempCharge } from '../src/types/billing.js';
+import type { AuditWarning, Database, Payment, Subscription, TempCharge } from '../src/types/billing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = path.join(__dirname, '../fixtures/demo-database.json');
@@ -183,6 +185,85 @@ describe('Accounting & Ledger business logic validations', () => {
 
     expect(duplicateCharge).toBeDefined();
     expect(duplicateCharge!.id).toBe('chg_recent');
+  });
+});
+
+describe('findFirstDuplicateSubscriptionMonth', () => {
+  /** The demo fixture is in 2026/06; s_alpha_video bills Member Alpha for Shared Video from 2026/01 on. */
+  const fixture = (): Database => normalizeDatabaseRelations(JSON.parse(fs.readFileSync(dbPath, 'utf8')));
+  const alphaVideo = (data: Database): Subscription => data.subscriptions.find(subscription => subscription.id === 's_alpha_video')!;
+  /** Another Shared Video seat for Member Alpha from `startMonth`. */
+  const alphaVideoFrom = (data: Database, startMonth: string, extra: Partial<Subscription> = {}): Subscription => ({
+    ...alphaVideo(data), id: `s_alpha_video_${startMonth.replace('/', '_')}`, startMonth, ...extra
+  });
+  const alphaMusicFrom = (data: Database, startMonth: string): Subscription => ({
+    ...alphaVideo(data), id: 's_alpha_music', platformId: 'p_music', platformName: 'Shared Music', startMonth
+  });
+  const duplicates = (data: Database, month?: string) => findAccountingWarnings(data, month).filter(warning => warning.code === 'duplicate_active_subscription');
+
+  it('reports the first month in which a later subscription overlaps, with that month\'s warning', () => {
+    const data = fixture();
+    data.subscriptions.push(alphaVideoFrom(data, '2026/08'), alphaMusicFrom(data, '2027/03'));
+    // The audit of the open month alone sees nothing.
+    expect(duplicates(data)).toEqual([]);
+    const found = findFirstDuplicateSubscriptionMonth(data);
+    expect(found?.month).toBe('2026/08');
+    expect(found?.warnings).toEqual(duplicates(data, '2026/08'));
+    expect(found?.warnings).toHaveLength(1);
+    expect(found?.warnings[0]).toMatchObject({ severity: 'high', code: 'duplicate_active_subscription' });
+    expect(found?.warnings[0]?.detail).toContain('Member Alpha 在 2026/08 有 2 筆 Shared Video');
+  });
+
+  it('reports an overlap in the open month as that month', () => {
+    const data = fixture();
+    data.subscriptions.push(alphaVideoFrom(data, '2026/06'));
+    expect(findFirstDuplicateSubscriptionMonth(data)?.month).toBe('2026/06');
+  });
+
+  it('finds no overlap once an exit month ends it, between marked extra seats, or on another platform', () => {
+    const data = fixture();
+    const later = alphaVideoFrom(data, '2026/08');
+    data.subscriptions.push(later);
+    alphaVideo(data).exitMonth = '2026/07';
+    expect(findFirstDuplicateSubscriptionMonth(data)).toBeNull();
+    // An exit month equal to the later start month still bills both seats in that month.
+    alphaVideo(data).exitMonth = '2026/08';
+    expect(findFirstDuplicateSubscriptionMonth(data)?.month).toBe('2026/08');
+    delete alphaVideo(data).exitMonth;
+    Object.assign(alphaVideo(data), { allowDuplicate: true, seatLabel: 'Seat A' });
+    Object.assign(later, { allowDuplicate: true, seatLabel: 'Seat B' });
+    expect(findFirstDuplicateSubscriptionMonth(data)).toBeNull();
+
+    const other = fixture();
+    other.subscriptions.push(alphaMusicFrom(other, '2026/09'));
+    expect(findFirstDuplicateSubscriptionMonth(other)).toBeNull();
+  });
+
+  it('finds the same month as an audit of every month through the latest start month', () => {
+    const monthOf = (code: number) => `${Math.floor((code - 1) / 12)}/${String(((code - 1) % 12) + 1).padStart(2, '0')}`;
+    const everyMonth = (data: Database): string | null => {
+      const last = Math.max(...data.subscriptions.map(subscription => monthToCode(subscription.startMonth)!));
+      for (let code = monthToCode(data.currentMonth)!; code <= last; code++) {
+        if (duplicates(data, monthOf(code)).length) return monthOf(code);
+      }
+      return null;
+    };
+    const archived = { status: 'archived', archivedAt: '2026-06-10T00:00:00.000Z' };
+    const scenarios: Array<[string, (data: Database) => void, string | null]> = [
+      ['an overlap between later start months', data => { data.subscriptions.push(alphaMusicFrom(data, '2027/04'), alphaVideoFrom(data, '2026/09')); }, '2026/09'],
+      ['an overlap from the latest start month, after a year end', data => { data.subscriptions.push(alphaVideoFrom(data, '2027/02')); }, '2027/02'],
+      ['a handover through an exit month', data => { alphaVideo(data).exitMonth = '2026/11'; data.subscriptions.push(alphaVideoFrom(data, '2026/12')); }, null],
+      ['a member archived from the later start month', data => { Object.assign(data.members.find(member => member.id === 'm_alpha')!, archived, { archivedMonth: '2026/08' }); data.subscriptions.push(alphaVideoFrom(data, '2026/08')); }, null],
+      ['a platform archived after the later start month', data => { Object.assign(data.platforms.find(platform => platform.id === 'p_video')!, archived, { archivedMonth: '2026/10' }); data.subscriptions.push(alphaVideoFrom(data, '2026/09')); }, '2026/09'],
+      ['marked seats beside an unmarked one', data => { data.subscriptions.push(alphaVideoFrom(data, '2026/10', { allowDuplicate: true, seatLabel: 'Seat B' }), alphaVideoFrom(data, '2026/08', { allowDuplicate: true, seatLabel: 'Seat C' })); }, '2026/08'],
+      ['the fixture as it is', () => undefined, null]
+    ];
+    for (const [name, change, expected] of scenarios) {
+      const data = fixture();
+      change(data);
+      expect(everyMonth(data), name).toBe(expected);
+      expect(findFirstDuplicateSubscriptionMonth(data)?.month ?? null, name).toBe(expected);
+    }
   });
 });
 

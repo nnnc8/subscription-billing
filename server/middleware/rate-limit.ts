@@ -62,22 +62,3 @@ export function createAuthRateLimit(runtime: Runtime): RequestHandler {
         message: '登入嘗試次數過多，請稍後再試'
     });
 }
-
-/** AI calls spend the operator's Gemini quota, so limit them per signed-in account. */
-export function createAiRateLimits(runtime: Runtime): RequestHandler[] {
-    const accountKey = (req: Request) => `ai:${req.session?.user?.email || clientAddress(runtime, req)}`;
-    return [
-        createRateLimiter({
-            windowMs: 10 * 60 * 1000,
-            max: 30,
-            key: accountKey,
-            message: 'AI 功能使用太頻繁，請稍後再試'
-        }),
-        createRateLimiter({
-            windowMs: 24 * 60 * 60 * 1000,
-            max: 300,
-            key: accountKey,
-            message: '今天的 AI 使用次數已達上限'
-        })
-    ];
-}

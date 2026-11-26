@@ -1082,3 +1082,26 @@ export function findAccountingWarnings(db: Database | null, monthStr?: string): 
 
     return warnings;
 }
+
+/**
+ * The first month from db.currentMonth through the latest subscription startMonth in which
+ * findAccountingWarnings reports duplicate_active_subscription, with that month's warnings.
+ * A save is audited for the open month only, so it could add a seat that overlaps from a later
+ * month, and the month close would then fail once that month arrives.
+ *
+ * Only the current month and the months in which a subscription starts can begin an overlap:
+ * from one month to the next, subscriptions only end, and archived members and platforms only
+ * stop being billed. Auditing those months finds the same first month as auditing every month.
+ */
+export function findFirstDuplicateSubscriptionMonth(db: Database): { month: string; warnings: AuditWarning[] } | null {
+    const currentCode = monthToCode(db.currentMonth);
+    if (currentCode === null) return null;
+    const laterStartMonths = [...new Set((db.subscriptions || []).map(subscription => subscription.startMonth))]
+        .filter(month => (monthToCode(month) ?? currentCode) > currentCode)
+        .sort((left, right) => monthToCode(left)! - monthToCode(right)!);
+    for (const month of [db.currentMonth, ...laterStartMonths]) {
+        const warnings = findAccountingWarnings(db, month).filter(warning => warning.code === 'duplicate_active_subscription');
+        if (warnings.length) return { month, warnings };
+    }
+    return null;
+}

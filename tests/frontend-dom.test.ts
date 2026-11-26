@@ -76,25 +76,6 @@ function installFetchMock(options: { unauthorizedData?: boolean } = {}): void {
         blockedReason: null,
       });
     }
-    if (url === '/api/automation/ingest') {
-      return jsonResponse({
-        applied: [],
-        rejected: [],
-        parseErrors: [],
-        pending: [{
-          id: 'proposal_frontend_1',
-          kind: 'payment',
-          sourceText: 'Member Alpha 轉 270',
-          confidence: 0.91,
-          reason: '測試待覆核',
-          warnings: [],
-          payload: { memberName: 'Member Alpha', amount: 270, date: '2026-06-15' },
-          status: 'pending',
-          rejectReason: null,
-          ledgerEventId: null,
-        }],
-      });
-    }
     if (url.startsWith('/api/')) return jsonResponse({ success: true, data: appData });
     throw new Error(`Unexpected fetch: ${url}`);
   });
@@ -137,7 +118,7 @@ afterAll(() => {
 });
 
 describe('frontend navigation and state persistence', () => {
-  test('keeps dashboard, subscription, settings, history, and automation state across navigation', async () => {
+  test('keeps dashboard, subscription, settings, and history state across navigation', async () => {
     const user = userEvent.setup();
     render(createElement(App));
     await screen.findByRole('region', { name: '總覽' });
@@ -161,12 +142,6 @@ describe('frontend navigation and state persistence', () => {
     await user.selectOptions(within(history).getByLabelText('帳期'), '2026/05');
     await user.click(screen.getByRole('button', { name: '總覽' }));
 
-    const automationText = await within(dashboard()).findByLabelText('帳務文字');
-    await user.type(automationText, 'Member Alpha 轉 270');
-    await user.click(within(dashboard()).getByRole('button', { name: '解析並入帳' }));
-    await within(dashboard()).findByRole('button', { name: /待覆核/ });
-    await user.click(within(dashboard()).getByRole('button', { name: /待覆核/ }));
-
     await user.click(screen.getByRole('button', { name: '訂閱名額' }));
     await user.click(screen.getByRole('button', { name: '設定' }));
     await user.click(screen.getByRole('button', { name: '歷史紀錄' }));
@@ -180,20 +155,12 @@ describe('frontend navigation and state persistence', () => {
     expect((within(hiddenSubscriptions).getByLabelText('起算月份 (YYYY/MM)') as HTMLInputElement).value).toBe('2026/07');
     expect((within(hiddenSettings).getByLabelText('匯款帳戶資訊') as HTMLTextAreaElement).value).toBe('draft-only-bank-info');
     expect((within(hiddenHistory).getByLabelText('帳期') as HTMLSelectElement).value).toBe('2026/05');
-    expect((within(dashboard()).getByLabelText('帳務文字') as HTMLTextAreaElement).value).toBe('Member Alpha 轉 270');
-    expect(within(dashboard()).getByRole('button', { name: /待覆核/ }).getAttribute('aria-pressed')).toBe('true');
-    expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/automation/ingest')).toHaveLength(1);
   }, 15_000);
 
-  test('uses the shared apiFetch for automation requests', async () => {
-    const user = userEvent.setup();
+  test('sends the session cookie with API requests', async () => {
     render(createElement(App));
     await screen.findByRole('region', { name: '總覽' });
-    const workspace = await within(dashboard()).findByLabelText('帳務文字');
-    await user.type(workspace, 'Member Alpha 轉 270');
-    await user.click(within(dashboard()).getByRole('button', { name: '解析並入帳' }));
-    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/automation/ingest')).toBe(true));
-    expect(fetchMock.mock.calls.find(([input]) => String(input) === '/api/automation/ingest')?.[1]).toMatchObject({ credentials: 'include' });
+    expect(fetchMock.mock.calls.find(([input]) => String(input) === '/api/data')?.[1]).toMatchObject({ credentials: 'include' });
   });
 });
 

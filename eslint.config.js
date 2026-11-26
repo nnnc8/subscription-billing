@@ -6,7 +6,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 import tseslint from 'typescript-eslint'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'coverage', '.vercel']),
   {
     files: ['**/*.{js,jsx,ts,tsx}'],
     extends: [
@@ -22,6 +22,15 @@ export default defineConfig([
     rules: {
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    files: ['server.ts', 'server/**/*.ts', 'lib/**/*.ts', 'api/**/*.ts', 'scripts/**/*.ts'],
+    languageOptions: { parserOptions: { project: './tsconfig.node.json', tsconfigRootDir: import.meta.dirname } },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'error',
+      // Express 5 awaits route handlers. Keep the other Promise misuse checks.
+      '@typescript-eslint/no-misused-promises': ['error', { checksVoidReturn: { arguments: false } }],
     },
   },
 ])

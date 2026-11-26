@@ -1,4 +1,5 @@
-import type { Database as SqliteDatabase } from 'better-sqlite3';
+import type { InStatement } from '@libsql/client';
+import { rowChanges, type SqlRow } from './shared.js';
 import type { LedgerEvent } from '../../src/types/billing.js';
 
 export interface LedgerEventRow {
@@ -17,8 +18,9 @@ export interface LedgerEventRow {
 }
 
 export class LedgerRepository {
-  static findAll(db: SqliteDatabase): LedgerEvent[] {
-    const rows = db.prepare('SELECT * FROM ledger_events ORDER BY at ASC').all() as LedgerEventRow[];
+  static readonly select = 'SELECT * FROM ledger_events ORDER BY at ASC';
+
+  static decode(rows: LedgerEventRow[]): LedgerEvent[] {
     return rows.map(row => ({
       id: row.id,
       at: row.at,
@@ -35,26 +37,8 @@ export class LedgerRepository {
     }));
   }
 
-  static saveAll(db: SqliteDatabase, entries: LedgerEvent[]): void {
-    const insertStmt = db.prepare(`
-      INSERT INTO ledger_events (id, at, actor, type, summary, month, entityType, entityId, amount, payload_json, hash, previousHash)
-      VALUES (@id, @at, @actor, @type, @summary, @month, @entityType, @entityId, @amount, @payload_json, @hash, @previousHash)
-      ON CONFLICT(id) DO UPDATE SET
-        at = excluded.at,
-        actor = excluded.actor,
-        type = excluded.type,
-        summary = excluded.summary,
-        month = excluded.month,
-        entityType = excluded.entityType,
-        entityId = excluded.entityId,
-        amount = excluded.amount,
-        payload_json = excluded.payload_json,
-        hash = excluded.hash,
-        previousHash = excluded.previousHash
-    `);
-
-    for (const e of entries) {
-      insertStmt.run({
+  static encode(entries: LedgerEvent[]): SqlRow[] {
+    return entries.map(e => ({
         id: e.id,
         at: e.at,
         actor: e.actor,
@@ -67,15 +51,10 @@ export class LedgerRepository {
         payload_json: e.payload ? JSON.stringify(e.payload) : null,
         hash: e.hash || null,
         previousHash: e.previousHash || null
-      });
-    }
+      }));
+  }
 
-    const ids = entries.map(e => e.id);
-    if (ids.length > 0) {
-      const placeholders = ids.map(() => '?').join(',');
-      db.prepare(`DELETE FROM ledger_events WHERE id NOT IN (${placeholders})`).run(ids);
-    } else {
-      db.prepare('DELETE FROM ledger_events').run();
-    }
+  static changes(previous: LedgerEvent[], next: LedgerEvent[]): InStatement[] {
+    return rowChanges('ledger_events', 'id', this.encode(previous), this.encode(next));
   }
 }

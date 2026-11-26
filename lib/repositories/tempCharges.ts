@@ -1,4 +1,5 @@
-import type { Database as SqliteDatabase } from 'better-sqlite3';
+import type { InStatement } from '@libsql/client';
+import { rowChanges, type SqlRow } from './shared.js';
 import type { TempCharge } from '../../src/types/billing.js';
 
 export interface TempChargeRow {
@@ -19,8 +20,9 @@ export interface TempChargeRow {
 }
 
 export class TempChargeRepository {
-  static findAll(db: SqliteDatabase): TempCharge[] {
-    const rows = db.prepare('SELECT * FROM temp_charges').all() as TempChargeRow[];
+  static readonly select = 'SELECT * FROM temp_charges';
+
+  static decode(rows: TempChargeRow[]): TempCharge[] {
     return rows.map(row => ({
       id: row.id,
       memberId: row.memberId,
@@ -39,28 +41,8 @@ export class TempChargeRepository {
     }));
   }
 
-  static saveAll(db: SqliteDatabase, tempCharges: TempCharge[]): void {
-    const insertStmt = db.prepare(`
-      INSERT INTO temp_charges (id, memberId, memberName, date, amount, desc, description, cycle, createdAt, recordedAt, status, voidedAt, voidedBy, voidReason)
-      VALUES (@id, @memberId, @memberName, @date, @amount, @desc, @description, @cycle, @createdAt, @recordedAt, @status, @voidedAt, @voidedBy, @voidReason)
-      ON CONFLICT(id) DO UPDATE SET
-        memberId = excluded.memberId,
-        memberName = excluded.memberName,
-        date = excluded.date,
-        amount = excluded.amount,
-        desc = excluded.desc,
-        description = excluded.description,
-        cycle = excluded.cycle,
-        createdAt = excluded.createdAt,
-        recordedAt = excluded.recordedAt,
-        status = excluded.status,
-        voidedAt = excluded.voidedAt,
-        voidedBy = excluded.voidedBy,
-        voidReason = excluded.voidReason
-    `);
-
-    for (const c of tempCharges) {
-      insertStmt.run({
+  static encode(tempCharges: TempCharge[]): SqlRow[] {
+    return tempCharges.map(c => ({
         id: c.id,
         memberId: c.memberId,
         memberName: c.memberName,
@@ -75,15 +57,10 @@ export class TempChargeRepository {
         voidedAt: c.voidedAt || null,
         voidedBy: c.voidedBy || null,
         voidReason: c.voidReason || null
-      });
-    }
+      }));
+  }
 
-    const ids = tempCharges.map(c => c.id);
-    if (ids.length > 0) {
-      const placeholders = ids.map(() => '?').join(',');
-      db.prepare(`DELETE FROM temp_charges WHERE id NOT IN (${placeholders})`).run(ids);
-    } else {
-      db.prepare('DELETE FROM temp_charges').run();
-    }
+  static changes(previous: TempCharge[], next: TempCharge[]): InStatement[] {
+    return rowChanges('temp_charges', 'id', this.encode(previous), this.encode(next));
   }
 }

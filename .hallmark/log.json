@@ -1,0 +1,10 @@
+[
+ {
+  "mode": "redesign",
+  "depth": "full",
+  "scope": "app",
+  "theme": "Furrow",
+  "prompt": "redesign the billing app frontend and retire the AI features",
+  "date": "2026-11-26"
+ }
+]

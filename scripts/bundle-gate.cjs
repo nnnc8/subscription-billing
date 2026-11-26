@@ -51,18 +51,8 @@ if (measuredBytes > budgetBytes) {
   throw new Error(`Static JS gzip bundle exceeds budget: ${measuredBytes} > ${budgetBytes}`);
 }
 
-const findDynamicEntry = (name) => entries.find(([key, value]) =>
-  value.isDynamicEntry === true && key.endsWith(`/components/${name}.tsx`),
-);
-const aiEntry = findDynamicEntry('AiAssistantTab');
-const automationEntry = findDynamicEntry('AutomationTab');
-if (!aiEntry || !automationEntry) {
-  throw new Error('AI and Automation must remain dynamic Vite entries');
-}
-
 console.log(JSON.stringify({
   main: mainKey,
   staticJsGzipBytes: measuredBytes,
   budgetBytes,
-  dynamicEntries: [aiEntry[0], automationEntry[0]],
 }, null, 2));

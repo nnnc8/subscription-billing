@@ -3,9 +3,8 @@ import express from 'express';
 import { createRequireAuth } from './middleware/auth.js';
 import { createCorsMiddleware } from './middleware/cors.js';
 import { errorHandler } from './middleware/error.js';
-import { createAiRateLimits, createAuthRateLimit } from './middleware/rate-limit.js';
+import { createAuthRateLimit } from './middleware/rate-limit.js';
 import { createSecurityHeaders } from './middleware/security.js';
-import { createAiAutomationRouter } from './routes/ai-automation.js';
 import { createAuthRuntimeRouter } from './routes/auth-runtime.js';
 import { createBackupRouter } from './routes/backup.js';
 import { createBillingRouter } from './routes/billing.js';
@@ -30,16 +29,19 @@ export function createApp({
     app.use(express.json());
     app.use(express.static(activeRuntime.paths.distDir));
 
+    app.use('/api', async (req, _res, next) => {
+        if (req.path === '/health') { next(); return; }
+        await activeRuntime.ensureReady();
+        next();
+    });
     app.use(['/api/auth/login', '/api/auth/callback', '/api/auth/logout-all'], createAuthRateLimit(activeRuntime));
     app.use(createAuthRuntimeRouter(activeRuntime));
     app.use('/api', createRequireAuth(activeRuntime));
-    app.use(['/api/ai', '/api/automation/ingest'], ...createAiRateLimits(activeRuntime));
     app.use(createDataRouter(activeRuntime));
     app.use(createBillingRouter(activeRuntime));
     app.use(createSettingsEntitiesRouter(activeRuntime));
     app.use(createLifecycleAuditRouter(activeRuntime));
     app.use(createBackupRouter(activeRuntime));
-    app.use(createAiAutomationRouter(activeRuntime));
 
     app.use(/\/api\/.*/, (_req, res) => {
         res.status(404).json({ error: 'Not found' });
