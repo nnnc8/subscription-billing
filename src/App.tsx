@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { History, LayoutGrid, LogOut, Menu, Moon, Settings, Sun, Users, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -70,10 +70,18 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState('');
   const toastTimer = useRef<number | undefined>(undefined);
+  const toastRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuCloseRef = useRef<HTMLButtonElement>(null);
+  const menuWasOpen = useRef(false);
 
   useEffect(() => {
+    // The stylesheet reads the mode from <html>, so the page edge and scrollbar follow it too.
+    document.documentElement.dataset.mode = isDark ? 'dark' : 'light';
     document.body.classList.toggle('dark-mode', isDark);
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    const paper = window.getComputedStyle(document.body).backgroundColor;
+    if (paper && paper !== 'rgba(0, 0, 0, 0)') document.querySelector('meta[name="theme-color"]')?.setAttribute('content', paper);
   }, [isDark]);
 
   useEffect(() => () => {
@@ -83,9 +91,46 @@ export function App() {
   useEffect(() => {
     if (!menuOpen) return undefined;
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setMenuOpen(false); };
+    // The menu only exists under 60rem. Close it when the window grows past that, so the page
+    // behind it never stays inert next to the always-visible sidebar.
+    const wide = typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 60rem)') : undefined;
+    const closeWhenWide = () => { if (wide?.matches) setMenuOpen(false); };
     window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
+    wide?.addEventListener('change', closeWhenWide);
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape);
+      wide?.removeEventListener('change', closeWhenWide);
+    };
   }, [menuOpen]);
+
+  // Opening the menu moves focus into it; closing it hands focus back to the button that opened it.
+  useEffect(() => {
+    if (menuOpen) {
+      menuWasOpen.current = true;
+      menuCloseRef.current?.focus();
+    } else if (menuWasOpen.current) {
+      menuWasOpen.current = false;
+      menuButtonRef.current?.focus();
+    }
+  }, [menuOpen]);
+
+  // The top layer keeps a message readable above an open dialog, where a refused duplicate
+  // payment is reported. Showing it again lifts it over a dialog opened after the last message.
+  useLayoutEffect(() => {
+    const element = toastRef.current;
+    if (!toast || !element) return;
+    // Without the Popover API the attribute could only hide the message, so it comes off.
+    if (typeof element.showPopover !== 'function') {
+      element.removeAttribute('popover');
+      return;
+    }
+    try {
+      if (element.matches(':popover-open')) element.hidePopover();
+      element.showPopover();
+    } catch {
+      element.removeAttribute('popover');
+    }
+  }, [toast]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -235,13 +280,15 @@ export function App() {
 
   return (
     <div className="app">
-      <header className="phone-bar">
+      <a className="skip-link" href="#main">跳到主要內容</a>
+      <header className="phone-bar" inert={menuOpen}>
         <BrandMark />
         <span className="phone-bar-title">收支帳務</span>
-        <button type="button" className="icon-btn" aria-label="開啟選單" aria-expanded={menuOpen} aria-controls="app-sidebar" onClick={() => setMenuOpen(true)}>
+        <button ref={menuButtonRef} type="button" className="icon-btn" aria-label="開啟選單" aria-expanded={menuOpen} aria-controls="app-sidebar" onClick={() => setMenuOpen(true)}>
           <Menu size={20} />
         </button>
       </header>
+      <div className="scrim" hidden={!menuOpen} onClick={() => setMenuOpen(false)} />
 
       <aside id="app-sidebar" className={`sidebar${menuOpen ? ' open' : ''}`}>
         <div className="sidebar-head">
@@ -249,7 +296,7 @@ export function App() {
             <BrandMark />
             <div className="brand-text"><strong>收支帳務</strong><span>{data.currentMonth} 帳期</span></div>
           </div>
-          <button type="button" className="icon-btn sidebar-close" aria-label="關閉選單" onClick={() => setMenuOpen(false)}><X size={20} /></button>
+          <button ref={menuCloseRef} type="button" className="icon-btn sidebar-close" aria-label="關閉選單" onClick={() => setMenuOpen(false)}><X size={20} /></button>
         </div>
         <nav className="nav" aria-label="主要導航">
           {NAV_ITEMS.map(({ id, icon: Icon, label }) => (
@@ -275,20 +322,20 @@ export function App() {
             </button>
           </div>
           <div className="sidebar-actions">
-            <button type="button" className="btn btn-ghost" onClick={() => void handleLogout()}><LogOut size={16} />登出</button>
-            <button type="button" className="btn btn-ghost" onClick={() => void handleLogoutAll()}>登出所有裝置</button>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => void handleLogout()}><LogOut size={16} />登出</button>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => void handleLogoutAll()}>登出所有裝置</button>
           </div>
         </div>
       </aside>
 
-      <main className="canvas">
+      <main id="main" className="canvas" tabIndex={-1} inert={menuOpen}>
         <header className="page-head">
           <h1>{heading.title}</h1>
           <p>{heading.finding}</p>
         </header>
 
         <section hidden={activeTab !== 'dashboard'} aria-label="總覽">
-          <DashboardTab active={activeTab === 'dashboard'} data={data} apiFetch={apiFetch} refreshData={refreshData} showToast={showToast} />
+          <DashboardTab data={data} apiFetch={apiFetch} refreshData={refreshData} showToast={showToast} />
         </section>
         <section hidden={activeTab !== 'subscriptions'} aria-label="訂閱名額">
           <SubscriptionsTab data={data} apiFetch={apiFetch} refreshData={refreshData} showToast={showToast} />
@@ -301,7 +348,7 @@ export function App() {
         </section>
       </main>
 
-      {toast && <div className="toast" role="status" aria-live="polite" aria-atomic="true">{toast}</div>}
+      {toast && <div ref={toastRef} className="toast" popover="manual" role="status" aria-live="polite" aria-atomic="true">{toast}</div>}
     </div>
   );
 }

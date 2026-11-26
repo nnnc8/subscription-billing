@@ -357,7 +357,7 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
   return (
     <div className="settings">
       <div className={`draft-bar${configDirty ? ' dirty' : ''}`}>
-        <div>
+        <div className="draft-text">
           <strong>{configDirty ? `${draftCount} 項變更還沒寫入` : '與正式設定一致'}</strong>
           <p>{configDirty
             ? `平台 ${dirtyPlatformIds.length}、成員 ${dirtyMemberIds.length}、文字 ${textDraftCount}。這些修改只在這台裝置上，寫入後會一次存進資料庫並留下事件。`
@@ -378,7 +378,7 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
             <div><dt>已停用</dt><dd>{data.platforms.length - activePlatformCount} 個</dd></div>
           </dl>
         </div>
-        <div className="card">
+        <div className="settings-body">
           <ul className="entity-list">
             {data.platforms.map((platform) => {
               const archived = isArchivedEntity(platform);
@@ -387,8 +387,8 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
               return (
                 <li key={platform.id} className="entity-row">
                   <div className="entity-title">
-                    <strong>{platform.name}{archived && <span className="pill">已停用</span>}</strong>
-                    <button type="button" className="btn btn-ghost btn-danger" onClick={() => void archiveEntity('platform', platform.id, platform.name)} disabled={archived}>{archived ? '已停用' : '停用平台'}</button>
+                    <span className="row-title"><strong>{platform.name}</strong>{archived && <span className="pill">已停用</span>}</span>
+                    <button type="button" className="btn btn-sm btn-ghost btn-danger" onClick={() => void archiveEntity('platform', platform.id, platform.name)} disabled={archived}>{archived ? '已停用' : '停用平台'}</button>
                   </div>
                   <div className="field-pair">
                     <div className="field"><label htmlFor={`platform-mode-${platform.id}`}>收費模式</label><select id={`platform-mode-${platform.id}`} className="input" value={mode} disabled={archived} onChange={(event) => setPlatformDrafts((current) => ({ ...current, [platform.id]: { ...current[platform.id], billingMode: event.target.value as Platform['billingMode'] } }))}><option value="fixed">固定價格 (按人)</option><option value="split">動態均分 (平台總價)</option></select></div>
@@ -398,7 +398,7 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
               );
             })}
           </ul>
-          <div className="card-split">
+          <div className="sub-block">
             <h3>新增平台</h3>
             <form className="inline-form" onSubmit={handleAddPlatform}>
               <div className="field"><label htmlFor="new-platform-name">平台名稱</label><input id="new-platform-name" className="input" value={newPlatformName} onChange={(event) => setNewPlatformName(event.target.value)} required /></div>
@@ -419,7 +419,7 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
             <div><dt>自訂月費</dt><dd>{customFeeCount} 位</dd></div>
           </dl>
         </div>
-        <div className="card">
+        <div className="settings-body">
           <ul className="entity-list">
             {data.members.map((member) => {
               const archived = isArchivedEntity(member);
@@ -427,8 +427,8 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
               return (
                 <li key={member.id} className="entity-row">
                   <div className="entity-title">
-                    <strong>{member.name}{archived && <span className="pill">已停用</span>}</strong>
-                    <button type="button" className="btn btn-ghost btn-danger" onClick={() => void archiveEntity('member', member.id, member.name)} disabled={archived}>{archived ? '已停用' : '停用成員'}</button>
+                    <span className="row-title"><strong>{member.name}</strong>{archived && <span className="pill">已停用</span>}</span>
+                    <button type="button" className="btn btn-sm btn-ghost btn-danger" onClick={() => void archiveEntity('member', member.id, member.name)} disabled={archived}>{archived ? '已停用' : '停用成員'}</button>
                   </div>
                   <div className="field-pair">
                     <div className="field"><label htmlFor={`member-prior-${member.id}`}>前期餘額 (期初)</label><input id={`member-prior-${member.id}`} type="number" inputMode="numeric" className="input" disabled={archived} value={draft?.priorBalance ?? String(member.priorBalance)} onChange={(event) => setMemberDrafts((current) => ({ ...current, [member.id]: { ...current[member.id], priorBalance: event.target.value } }))} /></div>
@@ -438,7 +438,7 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
               );
             })}
           </ul>
-          <div className="card-split">
+          <div className="sub-block">
             <h3>新增成員</h3>
             <form className="inline-form" onSubmit={handleAddMember}>
               <div className="field"><label htmlFor="new-member-name">成員姓名</label><input id="new-member-name" className="input" value={newMemberName} onChange={(event) => setNewMemberName(event.target.value)} required /></div>
@@ -455,7 +455,7 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
           <h2>催繳訊息與匯款資訊</h2>
           <p>送出 LINE 帳單和複製腳本時，會帶上這裡的匯款資訊與語氣。</p>
         </div>
-        <div className="card form-stack">
+        <div className="settings-body form-stack">
           <div className="field"><label htmlFor="bank-info">匯款帳戶資訊</label><textarea id="bank-info" className="input" rows={3} value={bankInfo} onChange={(event) => setBankDraft(event.target.value)} /></div>
           <div className="field"><label htmlFor="reminder-style">催帳訊息風格</label><select id="reminder-style" className="input" value={reminderStyle} onChange={(event) => setReminderStyleDraft(event.target.value)}><option value="friendly">幽默親友風</option><option value="formal">正式對帳風</option><option value="minimal">極簡親友風</option></select></div>
         </div>
@@ -466,7 +466,7 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
           <h2>備份與還原</h2>
           <p>每次寫入前系統會自動備份。還原前也會先備份目前資料，所以還原可以再退回。伺服器備份和資料庫在同一處，請定期下載一份到自己的裝置。</p>
         </div>
-        <div className="card">
+        <div className="settings-body">
           {!backupOpen ? (
             <div className="entity-title">
               <span className="meta">備份清單收合中</span>
@@ -479,8 +479,8 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
                 <button type="button" className="btn btn-ghost" onClick={() => setBackupOpen(false)}>收合</button>
               </div>
               {recoveryStatus && (
-                <dl className="facts card-split">
-                  <div><dt>帳期與狀態</dt><dd>{recoveryStatus.currentMonth} · {recoveryStatus.health.label}<small>{recoveryStatus.health.warningCount} 則提醒</small></dd></div>
+                <dl className="facts">
+                  <div><dt>帳期與狀態</dt><dd>{recoveryStatus.currentMonth}，{recoveryStatus.health.label}<small>{recoveryStatus.health.warningCount} 則提醒</small></dd></div>
                   <div><dt>待收</dt><dd>{formatMoney(recoveryStatus.totals.receivable)}<small>{recoveryStatus.totals.unpaidMembers} 人未結清</small></dd></div>
                   <div><dt>資料指紋</dt><dd><code>{recoveryStatus.fingerprint.slice(0, 12)}</code><small>{recoveryStatus.counts.ledger} 筆事件</small></dd></div>
                 </dl>
@@ -490,17 +490,17 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
                 {/* Server backups share the database's disk; a periodic download is the off-site copy. */}
                 <a className="btn" href="/api/export-json" download>下載完整資料（JSON）到這台裝置</a>
               </div>
-              {backups.length === 0 ? <p className="empty card-split">還沒有備份。寫入任何帳務後，系統會自動建立第一份。</p> : (
-                <ul className="backup-list">
+              {backups.length === 0 ? <p className="empty">還沒有備份。寫入任何帳務後，系統會自動建立第一份。</p> : (
+                <ul className="backup-list ruled">
                   {backups.map((backup) => (
                     <li key={backup.filename}>
                       <div className="backup-text">
-                        <strong>{formatBackupTimestamp(backup)}<span className={`pill ${backup.readable ? snapshotTone(backup.snapshot) : 'neg'}`}>{backup.readable ? backup.snapshot?.health.label : '無法讀取'}</span></strong>
-                        <span>{backup.readable ? `${backup.snapshot?.currentMonth} 帳期` : backup.error} · {(backup.size / 1024).toFixed(1)} KB</span>
-                        <span>{backup.restoreImpact.summary}</span>
+                        <span className="row-title"><strong className="num">{formatBackupTimestamp(backup)}</strong><span className={`pill ${backup.readable ? snapshotTone(backup.snapshot) : 'neg'}`}>{backup.readable ? backup.snapshot?.health.label : '無法讀取'}</span></span>
+                        <span className="row-sub">{backup.readable ? `${backup.snapshot?.currentMonth} 帳期` : backup.error}，{(backup.size / 1024).toFixed(1)} KB</span>
+                        <span className="row-sub">{backup.restoreImpact.summary}</span>
                       </div>
                       <div className="backup-row-actions">
-                        <button type="button" className="btn" onClick={() => setSelectedBackup(backup)} disabled={backupLoading || !backup.readable}>還原</button>
+                        <button type="button" className="btn btn-sm" onClick={() => setSelectedBackup(backup)} disabled={backupLoading || !backup.readable}>還原</button>
                         <button type="button" className="icon-btn" aria-label={`刪除備份 ${backup.filename}`} onClick={() => void deleteBackup(backup.filename)} disabled={backupLoading}><Trash2 size={16} /></button>
                       </div>
                     </li>
@@ -517,7 +517,7 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
           <h2>帳期</h2>
           <p>帳期依台北時間自動推進，不提供手動跳月；過去的帳期只能在歷史紀錄裡唯讀查看。</p>
         </div>
-        <div className="card">
+        <div className="settings-body">
           {lifecycle ? (
             <dl className="facts">
               <div><dt>目前帳期</dt><dd>{lifecycle.currentMonth}</dd></div>
@@ -525,7 +525,7 @@ export function SettingsTab({ active, data, apiFetch, refreshData, showToast }: 
               <div><dt>上次自動推進</dt><dd>{lifecycle.lastAdvancedAt ? `${lifecycle.lastAdvancedFrom} → ${lifecycle.lastAdvancedTo}` : '尚未推進'}{lifecycle.lastAdvancedAt && <small>{new Date(lifecycle.lastAdvancedAt).toLocaleString('zh-TW', { hour12: false })}</small>}</dd></div>
             </dl>
           ) : <p role={lifecycleError ? 'alert' : 'status'} className="meta">{lifecycleError || '載入帳期狀態中…'}</p>}
-          {lifecycle?.blockedReason && <p className="notice bad card-split">{lifecycle.blockedReason}</p>}
+          {lifecycle?.blockedReason && <p className="notice bad">{lifecycle.blockedReason}</p>}
         </div>
       </div>
 

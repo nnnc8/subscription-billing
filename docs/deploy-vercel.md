@@ -109,7 +109,7 @@ pnpm migrate:turso --source /安全副本/database.db
 腳本先套用目標 migrations。
 腳本再以一筆交易寫入業務資料。
 腳本會在交易內與提交後核對指紋。
-指紋不包含登入截止時間與待審提案。
+指紋不包含登入截止時間與 `automation_proposals` 的舊資料。
 本腳本不搬移舊磁碟備份。
 
 目標已有業務資料時，腳本會拒絕覆寫。
@@ -153,7 +153,6 @@ pnpm migrate:turso --source /安全副本/database.db
 | `CLIENT_IP_HEADER` | `x-forwarded-for` |
 | `TURSO_DATABASE_URL` | 目標資料庫的 `libsql://` 網址 |
 | `TURSO_AUTH_TOKEN` | 目標資料庫的讀寫憑證 |
-| `GOOGLE_GEMINI_API_KEY` | 選用；未設定時不使用 AI 功能 |
 
 不要設定 `MIGRATE_FROM_JSON=1`。
 雲端也不需要 `DATA_DIR` 或 `SQLITE_PATH`。
@@ -209,6 +208,7 @@ Hobby 預設的部署保護不涵蓋 Production 網址。
 還原也會記錄 `backup.restored` 事件。
 任何步驟失敗時，整筆交易會回滾。
 還原不改動 `auth_state` 與 `automation_proposals`。
+`automation_proposals` 是已移除的文字入帳功能留下的表，程式不再讀寫。
 已登出的裝置不會因還原而重新登入。
 
 刪除備份與 `backup.deleted` 事件共用交易。
@@ -244,15 +244,13 @@ API 會在每個 instance 首次請求初始化。
 久未使用後，首次請求可能較慢。
 月份補進由請求觸發，沒有每月背景排程。
 
-限流計數與 RAG 向量索引保留於各 instance 記憶體。
+限流計數保留於各 instance 記憶體。
 instance 重建後，記憶體資料會消失。
 多個 instance 的限流計數不會加總。
-索引也不會收到其他 instance 的即時失效通知。
-帳務、提案與登入截止時間都保存於 Turso。
+帳務與登入截止時間都保存於 Turso。
 
 Turso 官方記載互動交易有 5 秒逾時。
 API 交易只做短暫計算與資料庫操作。
-AI 呼叫必須在交易外執行。
 大量搬移仍需以實際資料量驗收。
 參考：[互動交易](https://docs.turso.tech/sdk/ts/reference#interactive-transactions)。
 
@@ -352,7 +350,6 @@ callback 路徑必須是 `/api/auth/callback`。
 
 先重新整理頁面，再確認最新設定。
 另一個裝置可能已更改相同資料。
-提案也可能已被另一個裝置確認或拒絕。
 不要自動覆寫新資料。
 
 ### 本機測試回報 EPERM

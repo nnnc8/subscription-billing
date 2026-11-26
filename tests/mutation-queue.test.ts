@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { getCanonicalPersistedFingerprint, loadFromSQLite, saveToSQLite } from './test-database.js';
 import { SESSION_COOKIE_NAME, createSessionCookieValue } from '../lib/auth.js';
-import type { AutomationProposal, Database } from '../src/types/billing.js';
+import type { Database } from '../src/types/billing.js';
 import { createApp } from '../server/app.js';
 import { createRuntime, type Runtime } from './test-database.js';
 const rootDir = path.resolve('.');
@@ -102,7 +102,7 @@ describe('durable billing mutation queue', () => {
         expect(db.ledger.entries.filter(item => payments.some(payment => payment.id === item.entityId))).toHaveLength(2);
         expect(db.ledger.entries.filter(item => tempCharges.some(charge => charge.id === item.entityId))).toHaveLength(2);
     });
-    it('routes settings, automation confirmation and settlement through fresh state', async () => {
+    it('routes settings, a payment and settlement through fresh state', async () => {
         const runtime = (await createTestRuntime());
         await withApp(runtime, async (baseUrl, cookie) => {
             const headers = { 'Content-Type': 'application/json', Cookie: cookie };
@@ -152,26 +152,7 @@ describe('durable billing mutation queue', () => {
                 bankInfo: 'bundle bank',
                 reminderStyle: 'friendly'
             })).status).toBe(200);
-            const proposal: AutomationProposal = {
-                id: 'queue-confirm-proposal',
-                kind: 'payment',
-                sourceText: 'Member Alpha paid 333',
-                confidence: 1,
-                reason: 'test proposal',
-                warnings: [],
-                payload: {
-                    memberId: 'm_alpha',
-                    amount: 333,
-                    date: '2026-06-20',
-                    method: 'test',
-                    cycle: '202606',
-                    note: 'queue-confirm'
-                },
-                status: 'pending',
-                createdAt: new Date().toISOString()
-            };
-            await runtime.storeProposals([proposal]);
-            expect((await post('/api/automation/confirm/queue-confirm-proposal', {})).status).toBe(200);
+            expect((await post('/api/payment', { memberId: 'm_alpha', amount: 333, note: 'queue-settle' })).status).toBe(200);
             expect((await post('/api/settle', {})).status).toBe(200);
         });
         const db = (await runtime.readDB())!;
@@ -179,26 +160,6 @@ describe('durable billing mutation queue', () => {
         expect(db.history.some(entry => entry.month === '2026/06')).toBe(true);
         expect(db.payments).toHaveLength(0);
         expect(db.ledger.entries.some(entry => entry.type === 'month.settled')).toBe(true);
-    });
-    it('returns one 200 and one 409 for concurrent confirmation without a duplicate payment', async () => {
-        const runtime = await createTestRuntime();
-        await runtime.storeProposals([{
-            id: 'race-confirm', kind: 'payment', sourceText: 'test', confidence: 1, reason: 'test', warnings: [],
-            payload: { memberId: 'm_alpha', amount: 19, date: '2026-06-20', cycle: '202606', method: 'test', note: 'race-confirm' },
-            status: 'pending', createdAt: new Date().toISOString()
-        }]);
-        await withApp(runtime, async (baseUrl, cookie) => {
-            const confirm = () => fetch(`${baseUrl}/api/automation/confirm/race-confirm`, { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: '{}' });
-            const responses = await Promise.all([confirm(), confirm()]);
-            expect(responses.map(response => response.status).sort()).toEqual([200, 409]);
-            const before = getCanonicalPersistedFingerprint((await runtime.readDB())!);
-            expect((await confirm()).status).toBe(409);
-            expect(getCanonicalPersistedFingerprint((await runtime.readDB())!)).toBe(before);
-        });
-        const db = (await runtime.readDB())!;
-        expect(db.payments.filter(payment => payment.note === 'race-confirm')).toHaveLength(1);
-        expect(db.ledger.entries.filter(entry => entry.type === 'payment.created' && db.payments.some(payment => payment.note === 'race-confirm' && payment.id === entry.entityId))).toHaveLength(1);
-        expect((await runtime.getProposal('race-confirm'))?.status).toBe('applied');
     });
     it('rejects a failed item without poisoning the next queued mutation', async () => {
         const runtime = (await createTestRuntime());

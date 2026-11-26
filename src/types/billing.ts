@@ -333,35 +333,6 @@ export interface BackupPreview {
   changes: string[]
 }
 
-export interface AIMessage {
-  id?: string
-  role: 'user' | 'assistant' | 'system' | 'tool'
-  content: string
-  tool_calls?: AIToolCall[]
-}
-
-export interface AIToolCall {
-  id?: string
-  type: string
-  function: {
-    name: string
-    arguments: string
-  }
-}
-
-export interface AISessionMessage {
-  role: 'user' | 'assistant' | 'system'
-  content: string
-  tool_calls?: Array<{
-    id: string
-    type: string
-    function: {
-      name: string
-      arguments: string
-    }
-  }>
-}
-
 export interface LedgerSummary {
   integrity: 'valid' | 'invalid' | 'empty'
   count: number
@@ -402,39 +373,6 @@ export interface SessionVerificationResult {
   session?: SessionCookiePayload
 }
 
-export type ReminderStyle = 'friendly' | 'professional' | 'pirate' | 'poetic' | 'urgent' | 'minimal'
-
 export type ApiFetch = (path: string, options?: RequestInit) => Promise<Response>
 export type RefreshData = () => Promise<void>
 export type ShowToast = (message: string) => void
-
-// ---------------------------------------------------------------------------
-// Automation Inbox (GenAI Demo)
-// ---------------------------------------------------------------------------
-
-export type ProposalKind = 'payment' | 'subscription' | 'tempCharge'
-export type ProposalStatus = 'applied' | 'pending' | 'rejected'
-
-export interface AutomationProposal {
-  id: string
-  kind: ProposalKind
-  sourceText: string
-  confidence: number          // 0–1, as parsed by Gemini
-  reason: string              // AI 解析理由
-  warnings: string[]          // 潛在風險說明 (deterministic layer)
-  payload: Record<string, unknown>  // 對應既有 API 欄位
-  status: ProposalStatus
-  createdAt: string
-  appliedAt?: string
-  rejectedAt?: string
-  rejectedBy?: string
-  rejectReason?: string
-  ledgerEventId?: string      // 套用後對應的 ledger event id
-}
-
-export interface AutomationIngestResult {
-  applied: AutomationProposal[]
-  pending: AutomationProposal[]
-  rejected: AutomationProposal[]
-  parseErrors: string[]
-}

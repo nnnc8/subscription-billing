@@ -111,7 +111,7 @@ describe('server composition and route parity', () => {
         createApp({ runtime });
         expect(fs.existsSync(dataDir)).toBe(false);
     });
-    it('preserves all 39 API method/path pairs', () => {
+    it('preserves all 31 API method/path pairs', () => {
         const runtime = createRuntime({ rootDir, env: { NODE_ENV: 'test' } });
         expect(routeInventory(runtime)).toEqual([
             'DELETE /api/backups/:filename',
@@ -123,7 +123,6 @@ describe('server composition and route parity', () => {
             'GET /api/auth/callback',
             'GET /api/auth/login',
             'GET /api/auth/session',
-            'GET /api/automation/inbox',
             'GET /api/backups',
             'GET /api/backups/:filename/preview',
             'GET /api/close-preview',
@@ -132,15 +131,8 @@ describe('server composition and route parity', () => {
             'GET /api/health',
             'GET /api/ledger',
             'GET /api/lifecycle/status',
-            'POST /api/ai/chat',
-            'POST /api/ai/chat-legacy',
-            'POST /api/ai/generate-reminder',
-            'POST /api/ai/rag-search',
             'POST /api/auth/logout',
             'POST /api/auth/logout-all',
-            'POST /api/automation/confirm/:id',
-            'POST /api/automation/ingest',
-            'POST /api/automation/reject/:id',
             'POST /api/backups/create',
             'POST /api/backups/restore',
             'POST /api/member',
@@ -157,7 +149,7 @@ describe('server composition and route parity', () => {
     });
 });
 describe('native fetch integration across route groups', () => {
-    it('covers auth, data, billing, settings, lifecycle, backup, AI, 404 and static SPA', async () => {
+    it('covers auth, data, billing, settings, lifecycle, backup, 404 and static SPA', async () => {
         const runtime = (await createTestRuntime());
         await withApp(runtime, async (baseUrl, cookie) => {
             expect((await fetch(`${baseUrl}/api/health`)).status).toBe(200);
@@ -194,25 +186,18 @@ describe('native fetch integration across route groups', () => {
             expect(member.status).toBe(200);
             expect((await fetch(`${baseUrl}/api/lifecycle/status`, { headers: { Cookie: cookie } })).status).toBe(200);
             expect((await fetch(`${baseUrl}/api/backups`, { headers: { Cookie: cookie } })).status).toBe(200);
-            expect((await fetch(`${baseUrl}/api/ai/chat`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Cookie: cookie },
-                body: JSON.stringify({ message: '', history: [] })
-            })).status).toBe(400);
-            expect((await fetch(`${baseUrl}/api/ai/chat`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Cookie: cookie },
-                body: JSON.stringify({ message: 'hello', history: 'not-an-array' })
-            })).status).toBe(400);
-            expect((await fetch(`${baseUrl}/api/ai/rag-search`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Cookie: cookie },
-                body: JSON.stringify({ query: 'balance', topK: 0 })
-            })).status).toBe(400);
             expect((await fetch(`${baseUrl}/api/backups/not-valid/preview`, {
                 headers: { Cookie: cookie }
             })).status).toBe(400);
-            expect((await fetch(`${baseUrl}/api/automation/inbox`, { headers: { Cookie: cookie } })).status).toBe(200);
+            // The retired AI and text-ingestion routes answer like any other unknown route.
+            for (const retired of ['/api/ai/chat', '/api/ai/generate-reminder', '/api/automation/ingest']) {
+                expect((await fetch(`${baseUrl}${retired}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+                    body: JSON.stringify({})
+                })).status).toBe(404);
+            }
+            expect((await fetch(`${baseUrl}/api/automation/inbox`, { headers: { Cookie: cookie } })).status).toBe(404);
             const unknown = await fetch(`${baseUrl}/api/not-a-route`, { headers: { Cookie: cookie } });
             expect(unknown.status).toBe(404);
             expect(unknown.headers.get('content-type')).toContain('application/json');

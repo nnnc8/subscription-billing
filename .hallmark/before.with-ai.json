@@ -1,0 +1,1968 @@
+{
+ "v": 1,
+ "at": "2026-11-26T01:06:17.469Z",
+ "scope": "app",
+ "summary": {
+  "fails": 57,
+  "reflex": 32,
+  "warns": 1
+ },
+ "files": {
+  "src/App.tsx": {
+   "handlers": [
+    "onClick={() => setIsDark((current) => !current)}",
+    "onClick={() => setMenuOpen(false)}",
+    "onClick={() => setMenuOpen(true)}",
+    "onClick={() => showToast('歡迎使用共乘訂閱對帳系統！')}",
+    "onClick={() => void handleLogout()}",
+    "onClick={() => void handleLogoutAll()}",
+    "onClick={() => { setActiveTab(id); setMenuOpen(false); }}",
+    "onClick={() => { setLoading(true); void refreshData(); }}",
+    "onClick={() => { window.location.href = `${API_BASE}/auth/login`; }}"
+   ],
+   "links": [],
+   "fields": [],
+   "hooks": [],
+   "ids": [
+    "app-sidebar"
+   ],
+   "scripts": []
+  },
+  "src/main.tsx": {
+   "handlers": [],
+   "links": [],
+   "fields": [],
+   "hooks": [],
+   "ids": [],
+   "scripts": []
+  },
+  "src/components/AiAssistantTab.tsx": {
+   "handlers": [
+    "onChange={(e) => setAiInput(e.target.value)}",
+    "onClick={() => setAiInput(item.prompt)}",
+    "onSubmit={handleSendChatMessage}"
+   ],
+   "links": [],
+   "fields": [],
+   "hooks": [],
+   "ids": [
+    "ai-messages-container"
+   ],
+   "scripts": []
+  },
+  "src/components/AutomationTab.tsx": {
+   "handlers": [
+    "onChange={() => setMode(opt.value)}",
+    "onChange={e => setText(e.target.value)}",
+    "onClick={() => setActiveFilter(key)}",
+    "onClick={() => setShowDetail(v => !v)}",
+    "onClick={() => { void navigator.clipboard?.writeText(ledgerEventId); }}",
+    "onClick={() => { void onConfirm(id); }}",
+    "onClick={() => { void onReject(id); }}",
+    "onClick={handleIngest}",
+    "onConfirm={handleConfirm}",
+    "onReject={handleReject}"
+   ],
+   "links": [],
+   "fields": [
+    "ingest-mode"
+   ],
+   "hooks": [],
+   "ids": [
+    "automation-text"
+   ],
+   "scripts": []
+  },
+  "src/components/DashboardTab.tsx": {
+   "handlers": [
+    "onChange={(event) => setAmount(event.target.value)}",
+    "onChange={(event) => setDate(event.target.value)}",
+    "onChange={(event) => setDescription(event.target.value)}",
+    "onChange={(event) => setLogMember(event.target.value)}",
+    "onChange={(event) => setLogSearch(event.target.value)}",
+    "onChange={(event) => setPaymentMethod(event.target.value)}",
+    "onChange={(event) => setReminders((current) => ({ ...current, [member.id]: { ...current[member.id], style: event.target.value as ReminderStyle } }))}",
+    "onClick={() => exportBillingCsv(data.currentMonth, currentBalances, data.payments, data.tempCharges)}",
+    "onClick={() => openTransaction('charge', member.name)}",
+    "onClick={() => openTransaction('payment', member.name)}",
+    "onClick={() => setChargeOpen(false)}",
+    "onClick={() => setExpandedMember(expanded ? '' : member.id)}",
+    "onClick={() => setPaymentOpen(false)}",
+    "onClick={() => setReminders((current) => { const next = { ...current }; delete next[member.id]; return next; })}",
+    "onClick={() => shareReminder(member)}",
+    "onClick={() => void copyReminder(member)}",
+    "onClick={() => void generateAiReminder(member, reminderStyle)}",
+    "onClick={() => void voidTransaction('payment', payment.id)}",
+    "onClick={() => void voidTransaction('temp-charge', charge.id)}",
+    "onClick={() => { setLogSearch(''); setLogMember(''); }}",
+    "onClose={() => setChargeOpen(false)}",
+    "onClose={() => setPaymentOpen(false)}",
+    "onDataChange={refreshData}",
+    "onSubmit={handleAddCharge}",
+    "onSubmit={handleAddPayment}"
+   ],
+   "links": [],
+   "fields": [],
+   "hooks": [],
+   "ids": [
+    "charge-amount",
+    "charge-date",
+    "charge-description",
+    "charge-modal-title",
+    "log-search",
+    "payment-amount",
+    "payment-date",
+    "payment-method",
+    "payment-modal-title",
+    "payment-note"
+   ],
+   "scripts": []
+  },
+  "src/components/HistoryTab.tsx": {
+   "handlers": [
+    "onChange={(event) => setSelectedMonth(event.target.value)}",
+    "onClick={() => exportBillingCsv(selected.month, selected.balances, selected.payments, selected.tempCharges)}",
+    "onClick={() => setSelectedMonth(entry.month)}"
+   ],
+   "links": [],
+   "fields": [],
+   "hooks": [],
+   "ids": [
+    "history-month"
+   ],
+   "scripts": []
+  },
+  "src/components/SettingsTab.tsx": {
+   "handlers": [
+    "onChange={(event) => newPlatformMode === 'split' ? setNewPlatformTotal(event.target.value) : setNewPlatformPrice(event.target.value)}",
+    "onChange={(event) => setBankDraft(event.target.value)}",
+    "onChange={(event) => setMemberDrafts((current) => ({ ...current, [member.id]: { ...current[member.id], customFee: event.target.value } }))}",
+    "onChange={(event) => setMemberDrafts((current) => ({ ...current, [member.id]: { ...current[member.id], priorBalance: event.target.value } }))}",
+    "onChange={(event) => setNewMemberCustom(event.target.value)}",
+    "onChange={(event) => setNewMemberName(event.target.value)}",
+    "onChange={(event) => setNewMemberPrior(event.target.value)}",
+    "onChange={(event) => setNewPlatformMode(event.target.value as Platform['billingMode'])}",
+    "onChange={(event) => setNewPlatformName(event.target.value)}",
+    "onChange={(event) => setPlatformDrafts((current) => ({ ...current, [platform.id]: { ...current[platform.id], [mode === 'split' ? 'totalCost' : 'price']: event.target.value } }))}",
+    "onChange={(event) => setPlatformDrafts((current) => ({ ...current, [platform.id]: { ...current[platform.id], billingMode: event.target.value as Platform['billingMode'] } }))}",
+    "onChange={(event) => setReminderStyleDraft(event.target.value)}",
+    "onClick={() => setBackupOpen(false)}",
+    "onClick={() => setSelectedBackup(backup)}",
+    "onClick={() => setSelectedBackup(undefined)}",
+    "onClick={() => void archiveEntity('member', member.id, member.name)}",
+    "onClick={() => void archiveEntity('platform', platform.id, platform.name)}",
+    "onClick={() => void createBackup()}",
+    "onClick={() => void deleteBackup(backup.filename)}",
+    "onClick={() => void restoreBackup()}",
+    "onClick={() => void saveConfig()}",
+    "onClick={() => { setBackupOpen(true); void loadBackups(); }}",
+    "onClick={clearDrafts}",
+    "onClose={() => setSelectedBackup(undefined)}",
+    "onSubmit={handleAddMember}",
+    "onSubmit={handleAddPlatform}"
+   ],
+   "links": [
+    "/api/export-json"
+   ],
+   "fields": [],
+   "hooks": [],
+   "ids": [
+    "bank-info",
+    "new-member-custom",
+    "new-member-name",
+    "new-member-prior",
+    "new-platform-mode",
+    "new-platform-name",
+    "new-platform-price",
+    "reminder-style",
+    "restore-modal-title"
+   ],
+   "scripts": []
+  },
+  "src/components/SubscriptionsTab.tsx": {
+   "handlers": [
+    "onChange={(event) => setMemberName(event.target.value)}",
+    "onChange={(event) => setPlatformName(event.target.value)}",
+    "onChange={(event) => setStartMonth(event.target.value)}",
+    "onClick={() => void handleRemoveSubscription(subscription.id)}",
+    "onClick={() => void handleSetExitMonth(subscription)}",
+    "onSubmit={handleAddSubscription}"
+   ],
+   "links": [],
+   "fields": [],
+   "hooks": [],
+   "ids": [
+    "subscription-member",
+    "subscription-platform",
+    "subscription-start"
+   ],
+   "scripts": []
+  },
+  "src/components/ui/Modal.tsx": {
+   "handlers": [
+    "onCancel={(event) => { event.preventDefault(); onClose(); }}",
+    "onClick={handleBackdropClick}"
+   ],
+   "links": [],
+   "fields": [],
+   "hooks": [],
+   "ids": [],
+   "scripts": []
+  }
+ },
+ "wiring": {
+  "handlers": [
+   "onCancel={(event) => { event.preventDefault(); onClose(); }}",
+   "onChange={() => setMode(opt.value)}",
+   "onChange={(e) => setAiInput(e.target.value)}",
+   "onChange={(event) => newPlatformMode === 'split' ? setNewPlatformTotal(event.target.value) : setNewPlatformPrice(event.target.value)}",
+   "onChange={(event) => setAmount(event.target.value)}",
+   "onChange={(event) => setBankDraft(event.target.value)}",
+   "onChange={(event) => setDate(event.target.value)}",
+   "onChange={(event) => setDescription(event.target.value)}",
+   "onChange={(event) => setLogMember(event.target.value)}",
+   "onChange={(event) => setLogSearch(event.target.value)}",
+   "onChange={(event) => setMemberDrafts((current) => ({ ...current, [member.id]: { ...current[member.id], customFee: event.target.value } }))}",
+   "onChange={(event) => setMemberDrafts((current) => ({ ...current, [member.id]: { ...current[member.id], priorBalance: event.target.value } }))}",
+   "onChange={(event) => setMemberName(event.target.value)}",
+   "onChange={(event) => setNewMemberCustom(event.target.value)}",
+   "onChange={(event) => setNewMemberName(event.target.value)}",
+   "onChange={(event) => setNewMemberPrior(event.target.value)}",
+   "onChange={(event) => setNewPlatformMode(event.target.value as Platform['billingMode'])}",
+   "onChange={(event) => setNewPlatformName(event.target.value)}",
+   "onChange={(event) => setPaymentMethod(event.target.value)}",
+   "onChange={(event) => setPlatformDrafts((current) => ({ ...current, [platform.id]: { ...current[platform.id], [mode === 'split' ? 'totalCost' : 'price']: event.target.value } }))}",
+   "onChange={(event) => setPlatformDrafts((current) => ({ ...current, [platform.id]: { ...current[platform.id], billingMode: event.target.value as Platform['billingMode'] } }))}",
+   "onChange={(event) => setPlatformName(event.target.value)}",
+   "onChange={(event) => setReminderStyleDraft(event.target.value)}",
+   "onChange={(event) => setReminders((current) => ({ ...current, [member.id]: { ...current[member.id], style: event.target.value as ReminderStyle } }))}",
+   "onChange={(event) => setSelectedMonth(event.target.value)}",
+   "onChange={(event) => setStartMonth(event.target.value)}",
+   "onChange={e => setText(e.target.value)}",
+   "onClick={() => exportBillingCsv(data.currentMonth, currentBalances, data.payments, data.tempCharges)}",
+   "onClick={() => exportBillingCsv(selected.month, selected.balances, selected.payments, selected.tempCharges)}",
+   "onClick={() => openTransaction('charge', member.name)}",
+   "onClick={() => openTransaction('payment', member.name)}",
+   "onClick={() => setActiveFilter(key)}",
+   "onClick={() => setAiInput(item.prompt)}",
+   "onClick={() => setBackupOpen(false)}",
+   "onClick={() => setChargeOpen(false)}",
+   "onClick={() => setExpandedMember(expanded ? '' : member.id)}",
+   "onClick={() => setIsDark((current) => !current)}",
+   "onClick={() => setMenuOpen(false)}",
+   "onClick={() => setMenuOpen(true)}",
+   "onClick={() => setPaymentOpen(false)}",
+   "onClick={() => setReminders((current) => { const next = { ...current }; delete next[member.id]; return next; })}",
+   "onClick={() => setSelectedBackup(backup)}",
+   "onClick={() => setSelectedBackup(undefined)}",
+   "onClick={() => setSelectedMonth(entry.month)}",
+   "onClick={() => setShowDetail(v => !v)}",
+   "onClick={() => shareReminder(member)}",
+   "onClick={() => showToast('歡迎使用共乘訂閱對帳系統！')}",
+   "onClick={() => void archiveEntity('member', member.id, member.name)}",
+   "onClick={() => void archiveEntity('platform', platform.id, platform.name)}",
+   "onClick={() => void copyReminder(member)}",
+   "onClick={() => void createBackup()}",
+   "onClick={() => void deleteBackup(backup.filename)}",
+   "onClick={() => void generateAiReminder(member, reminderStyle)}",
+   "onClick={() => void handleLogout()}",
+   "onClick={() => void handleLogoutAll()}",
+   "onClick={() => void handleRemoveSubscription(subscription.id)}",
+   "onClick={() => void handleSetExitMonth(subscription)}",
+   "onClick={() => void restoreBackup()}",
+   "onClick={() => void saveConfig()}",
+   "onClick={() => void voidTransaction('payment', payment.id)}",
+   "onClick={() => void voidTransaction('temp-charge', charge.id)}",
+   "onClick={() => { setActiveTab(id); setMenuOpen(false); }}",
+   "onClick={() => { setBackupOpen(true); void loadBackups(); }}",
+   "onClick={() => { setLoading(true); void refreshData(); }}",
+   "onClick={() => { setLogSearch(''); setLogMember(''); }}",
+   "onClick={() => { void navigator.clipboard?.writeText(ledgerEventId); }}",
+   "onClick={() => { void onConfirm(id); }}",
+   "onClick={() => { void onReject(id); }}",
+   "onClick={() => { window.location.href = `${API_BASE}/auth/login`; }}",
+   "onClick={clearDrafts}",
+   "onClick={handleBackdropClick}",
+   "onClick={handleIngest}",
+   "onClose={() => setChargeOpen(false)}",
+   "onClose={() => setPaymentOpen(false)}",
+   "onClose={() => setSelectedBackup(undefined)}",
+   "onConfirm={handleConfirm}",
+   "onDataChange={refreshData}",
+   "onReject={handleReject}",
+   "onSubmit={handleAddCharge}",
+   "onSubmit={handleAddMember}",
+   "onSubmit={handleAddPayment}",
+   "onSubmit={handleAddPlatform}",
+   "onSubmit={handleAddSubscription}",
+   "onSubmit={handleSendChatMessage}"
+  ],
+  "links": [
+   "/api/export-json"
+  ],
+  "fields": [
+   "ingest-mode"
+  ],
+  "hooks": [],
+  "ids": [
+   "ai-messages-container",
+   "app-sidebar",
+   "automation-text",
+   "bank-info",
+   "charge-amount",
+   "charge-date",
+   "charge-description",
+   "charge-modal-title",
+   "history-month",
+   "log-search",
+   "new-member-custom",
+   "new-member-name",
+   "new-member-prior",
+   "new-platform-mode",
+   "new-platform-name",
+   "new-platform-price",
+   "payment-amount",
+   "payment-date",
+   "payment-method",
+   "payment-modal-title",
+   "payment-note",
+   "reminder-style",
+   "restore-modal-title",
+   "subscription-member",
+   "subscription-platform",
+   "subscription-start"
+  ]
+ },
+ "scripts": {},
+ "pages": {
+  "http://127.0.0.1:3111/?tab=dashboard": {
+   "links": [],
+   "fields": [
+    "#log-search",
+    "unnamed select 1",
+    "#automation-text",
+    "ingest-mode",
+    "unnamed text 1",
+    "#payment-amount",
+    "#payment-date",
+    "#payment-method",
+    "#payment-note",
+    "#charge-amount",
+    "#charge-date",
+    "#charge-description",
+    "#subscription-member",
+    "#subscription-platform",
+    "#subscription-start",
+    "#platform-mode-p_video",
+    "#platform-price-p_video",
+    "#platform-mode-p_music",
+    "#platform-price-p_music",
+    "#platform-mode-p_cloud",
+    "#platform-price-p_cloud",
+    "#platform-mode-p_design",
+    "#platform-price-p_design",
+    "#platform-mode-p_old",
+    "#platform-price-p_old",
+    "#new-platform-name",
+    "#new-platform-mode",
+    "#new-platform-price",
+    "#member-prior-m_wang",
+    "#member-fee-m_wang",
+    "#member-prior-m_chen",
+    "#member-fee-m_chen",
+    "#member-prior-m_lin",
+    "#member-fee-m_lin",
+    "#member-prior-m_chang",
+    "#member-fee-m_chang",
+    "#member-prior-m_huang",
+    "#member-fee-m_huang",
+    "#member-prior-m_ouyang",
+    "#member-fee-m_ouyang",
+    "#member-prior-m_alex",
+    "#member-fee-m_alex",
+    "#member-prior-m_wu",
+    "#member-fee-m_wu",
+    "#member-prior-m_chou",
+    "#member-fee-m_chou",
+    "#new-member-name",
+    "#new-member-prior",
+    "#new-member-custom",
+    "#bank-info",
+    "#reminder-style",
+    "#history-month"
+   ],
+   "actions": [],
+   "forms": [
+    {
+     "key": "form 1",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "unnamed text 1"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=text]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 2",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#payment-amount",
+      "#payment-date",
+      "#payment-method",
+      "#payment-note"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=number]",
+      "input[type=date]",
+      "select",
+      "input",
+      "button[type=button]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 3",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#charge-amount",
+      "#charge-date",
+      "#charge-description"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=number]",
+      "input[type=date]",
+      "input",
+      "button[type=button]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 4",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#subscription-member",
+      "#subscription-platform",
+      "#subscription-start"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "select",
+      "input",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 5",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#new-platform-name",
+      "#new-platform-mode",
+      "#new-platform-price"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input",
+      "select",
+      "input[type=number]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 6",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#new-member-name",
+      "#new-member-prior",
+      "#new-member-custom"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input",
+      "input[type=number]",
+      "button[type=submit]"
+     ]
+    }
+   ],
+   "hooked": [],
+   "headings": [
+    "總覽",
+    "本期收款",
+    "帳務檢查",
+    "最近操作",
+    "本期流水帳",
+    "收款 顯示 5 / 5 筆",
+    "臨時加帳 顯示 2 / 2 筆",
+    "本期分攤",
+    "文字入帳",
+    "ai 帳務助理",
+    "登記收款：",
+    "登記臨時加帳：",
+    "新增名額",
+    "全部名額",
+    "平台與定價",
+    "新增平台",
+    "成員與期初餘額",
+    "新增成員",
+    "催繳訊息與匯款資訊",
+    "備份與還原",
+    "帳期",
+    "確認還原備份",
+    "每期應收與已收",
+    "2026/10 帳期",
+    "封存鏈",
+    "當期流水",
+    "收款 5 筆",
+    "臨時加帳 0 筆"
+   ],
+   "figures": [
+    "2026",
+    "$1,910",
+    "$790",
+    "$750",
+    "29%",
+    "$2,700",
+    "$920",
+    "$460",
+    "$280",
+    "$150",
+    "$300",
+    "$100",
+    "09:05",
+    "$1,000",
+    "$220",
+    "$170",
+    "$80",
+    "$250",
+    "$110",
+    "$60",
+    "$330",
+    "90%"
+   ],
+   "images": [],
+   "controls": 161,
+   "words": 284
+  },
+  "http://127.0.0.1:3111/?tab=subscriptions": {
+   "links": [],
+   "fields": [
+    "#log-search",
+    "unnamed select 1",
+    "#automation-text",
+    "ingest-mode",
+    "unnamed text 1",
+    "#payment-amount",
+    "#payment-date",
+    "#payment-method",
+    "#payment-note",
+    "#charge-amount",
+    "#charge-date",
+    "#charge-description",
+    "#subscription-member",
+    "#subscription-platform",
+    "#subscription-start",
+    "#platform-mode-p_video",
+    "#platform-price-p_video",
+    "#platform-mode-p_music",
+    "#platform-price-p_music",
+    "#platform-mode-p_cloud",
+    "#platform-price-p_cloud",
+    "#platform-mode-p_design",
+    "#platform-price-p_design",
+    "#platform-mode-p_old",
+    "#platform-price-p_old",
+    "#new-platform-name",
+    "#new-platform-mode",
+    "#new-platform-price",
+    "#member-prior-m_wang",
+    "#member-fee-m_wang",
+    "#member-prior-m_chen",
+    "#member-fee-m_chen",
+    "#member-prior-m_lin",
+    "#member-fee-m_lin",
+    "#member-prior-m_chang",
+    "#member-fee-m_chang",
+    "#member-prior-m_huang",
+    "#member-fee-m_huang",
+    "#member-prior-m_ouyang",
+    "#member-fee-m_ouyang",
+    "#member-prior-m_alex",
+    "#member-fee-m_alex",
+    "#member-prior-m_wu",
+    "#member-fee-m_wu",
+    "#member-prior-m_chou",
+    "#member-fee-m_chou",
+    "#new-member-name",
+    "#new-member-prior",
+    "#new-member-custom",
+    "#bank-info",
+    "#reminder-style",
+    "#history-month"
+   ],
+   "actions": [],
+   "forms": [
+    {
+     "key": "form 1",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "unnamed text 1"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=text]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 2",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#payment-amount",
+      "#payment-date",
+      "#payment-method",
+      "#payment-note"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=number]",
+      "input[type=date]",
+      "select",
+      "input",
+      "button[type=button]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 3",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#charge-amount",
+      "#charge-date",
+      "#charge-description"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=number]",
+      "input[type=date]",
+      "input",
+      "button[type=button]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 4",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#subscription-member",
+      "#subscription-platform",
+      "#subscription-start"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "select",
+      "input",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 5",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#new-platform-name",
+      "#new-platform-mode",
+      "#new-platform-price"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input",
+      "select",
+      "input[type=number]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 6",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#new-member-name",
+      "#new-member-prior",
+      "#new-member-custom"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input",
+      "input[type=number]",
+      "button[type=submit]"
+     ]
+    }
+   ],
+   "hooked": [],
+   "headings": [
+    "訂閱名額",
+    "本期收款",
+    "帳務檢查",
+    "最近操作",
+    "本期流水帳",
+    "收款 顯示 5 / 5 筆",
+    "臨時加帳 顯示 2 / 2 筆",
+    "本期分攤",
+    "文字入帳",
+    "ai 帳務助理",
+    "登記收款：",
+    "登記臨時加帳：",
+    "新增名額",
+    "全部名額",
+    "平台與定價",
+    "新增平台",
+    "成員與期初餘額",
+    "新增成員",
+    "催繳訊息與匯款資訊",
+    "備份與還原",
+    "帳期",
+    "確認還原備份",
+    "每期應收與已收",
+    "2026/10 帳期",
+    "封存鏈",
+    "當期流水",
+    "收款 5 筆",
+    "臨時加帳 0 筆"
+   ],
+   "figures": [
+    "2026",
+    "$110",
+    "$60",
+    "$330",
+    "$280"
+   ],
+   "images": [],
+   "controls": 161,
+   "words": 258
+  },
+  "http://127.0.0.1:3111/?tab=config": {
+   "links": [],
+   "fields": [
+    "#log-search",
+    "unnamed select 1",
+    "#automation-text",
+    "ingest-mode",
+    "unnamed text 1",
+    "#payment-amount",
+    "#payment-date",
+    "#payment-method",
+    "#payment-note",
+    "#charge-amount",
+    "#charge-date",
+    "#charge-description",
+    "#subscription-member",
+    "#subscription-platform",
+    "#subscription-start",
+    "#platform-mode-p_video",
+    "#platform-price-p_video",
+    "#platform-mode-p_music",
+    "#platform-price-p_music",
+    "#platform-mode-p_cloud",
+    "#platform-price-p_cloud",
+    "#platform-mode-p_design",
+    "#platform-price-p_design",
+    "#platform-mode-p_old",
+    "#platform-price-p_old",
+    "#new-platform-name",
+    "#new-platform-mode",
+    "#new-platform-price",
+    "#member-prior-m_wang",
+    "#member-fee-m_wang",
+    "#member-prior-m_chen",
+    "#member-fee-m_chen",
+    "#member-prior-m_lin",
+    "#member-fee-m_lin",
+    "#member-prior-m_chang",
+    "#member-fee-m_chang",
+    "#member-prior-m_huang",
+    "#member-fee-m_huang",
+    "#member-prior-m_ouyang",
+    "#member-fee-m_ouyang",
+    "#member-prior-m_alex",
+    "#member-fee-m_alex",
+    "#member-prior-m_wu",
+    "#member-fee-m_wu",
+    "#member-prior-m_chou",
+    "#member-fee-m_chou",
+    "#new-member-name",
+    "#new-member-prior",
+    "#new-member-custom",
+    "#bank-info",
+    "#reminder-style",
+    "#history-month"
+   ],
+   "actions": [],
+   "forms": [
+    {
+     "key": "form 1",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "unnamed text 1"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=text]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 2",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#payment-amount",
+      "#payment-date",
+      "#payment-method",
+      "#payment-note"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=number]",
+      "input[type=date]",
+      "select",
+      "input",
+      "button[type=button]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 3",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#charge-amount",
+      "#charge-date",
+      "#charge-description"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=number]",
+      "input[type=date]",
+      "input",
+      "button[type=button]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 4",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#subscription-member",
+      "#subscription-platform",
+      "#subscription-start"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "select",
+      "input",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 5",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#new-platform-name",
+      "#new-platform-mode",
+      "#new-platform-price"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input",
+      "select",
+      "input[type=number]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 6",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#new-member-name",
+      "#new-member-prior",
+      "#new-member-custom"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input",
+      "input[type=number]",
+      "button[type=submit]"
+     ]
+    }
+   ],
+   "hooked": [],
+   "headings": [
+    "設定",
+    "本期收款",
+    "帳務檢查",
+    "最近操作",
+    "本期流水帳",
+    "收款 顯示 5 / 5 筆",
+    "臨時加帳 顯示 2 / 2 筆",
+    "本期分攤",
+    "文字入帳",
+    "ai 帳務助理",
+    "登記收款：",
+    "登記臨時加帳：",
+    "新增名額",
+    "全部名額",
+    "平台與定價",
+    "新增平台",
+    "成員與期初餘額",
+    "新增成員",
+    "催繳訊息與匯款資訊",
+    "備份與還原",
+    "帳期",
+    "確認還原備份",
+    "每期應收與已收",
+    "2026/10 帳期",
+    "封存鏈",
+    "當期流水",
+    "收款 5 筆",
+    "臨時加帳 0 筆"
+   ],
+   "figures": [
+    "2026",
+    "09:05"
+   ],
+   "images": [],
+   "controls": 161,
+   "words": 179
+  },
+  "http://127.0.0.1:3111/?tab=history": {
+   "links": [],
+   "fields": [
+    "#log-search",
+    "unnamed select 1",
+    "#automation-text",
+    "ingest-mode",
+    "unnamed text 1",
+    "#payment-amount",
+    "#payment-date",
+    "#payment-method",
+    "#payment-note",
+    "#charge-amount",
+    "#charge-date",
+    "#charge-description",
+    "#subscription-member",
+    "#subscription-platform",
+    "#subscription-start",
+    "#platform-mode-p_video",
+    "#platform-price-p_video",
+    "#platform-mode-p_music",
+    "#platform-price-p_music",
+    "#platform-mode-p_cloud",
+    "#platform-price-p_cloud",
+    "#platform-mode-p_design",
+    "#platform-price-p_design",
+    "#platform-mode-p_old",
+    "#platform-price-p_old",
+    "#new-platform-name",
+    "#new-platform-mode",
+    "#new-platform-price",
+    "#member-prior-m_wang",
+    "#member-fee-m_wang",
+    "#member-prior-m_chen",
+    "#member-fee-m_chen",
+    "#member-prior-m_lin",
+    "#member-fee-m_lin",
+    "#member-prior-m_chang",
+    "#member-fee-m_chang",
+    "#member-prior-m_huang",
+    "#member-fee-m_huang",
+    "#member-prior-m_ouyang",
+    "#member-fee-m_ouyang",
+    "#member-prior-m_alex",
+    "#member-fee-m_alex",
+    "#member-prior-m_wu",
+    "#member-fee-m_wu",
+    "#member-prior-m_chou",
+    "#member-fee-m_chou",
+    "#new-member-name",
+    "#new-member-prior",
+    "#new-member-custom",
+    "#bank-info",
+    "#reminder-style",
+    "#history-month"
+   ],
+   "actions": [],
+   "forms": [
+    {
+     "key": "form 1",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "unnamed text 1"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=text]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 2",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#payment-amount",
+      "#payment-date",
+      "#payment-method",
+      "#payment-note"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=number]",
+      "input[type=date]",
+      "select",
+      "input",
+      "button[type=button]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 3",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#charge-amount",
+      "#charge-date",
+      "#charge-description"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=number]",
+      "input[type=date]",
+      "input",
+      "button[type=button]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 4",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#subscription-member",
+      "#subscription-platform",
+      "#subscription-start"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "select",
+      "input",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 5",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#new-platform-name",
+      "#new-platform-mode",
+      "#new-platform-price"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input",
+      "select",
+      "input[type=number]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 6",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#new-member-name",
+      "#new-member-prior",
+      "#new-member-custom"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input",
+      "input[type=number]",
+      "button[type=submit]"
+     ]
+    }
+   ],
+   "hooked": [],
+   "headings": [
+    "歷史紀錄",
+    "本期收款",
+    "帳務檢查",
+    "最近操作",
+    "本期流水帳",
+    "收款 顯示 5 / 5 筆",
+    "臨時加帳 顯示 2 / 2 筆",
+    "本期分攤",
+    "文字入帳",
+    "ai 帳務助理",
+    "登記收款：",
+    "登記臨時加帳：",
+    "新增名額",
+    "全部名額",
+    "平台與定價",
+    "新增平台",
+    "成員與期初餘額",
+    "新增成員",
+    "催繳訊息與匯款資訊",
+    "備份與還原",
+    "帳期",
+    "確認還原備份",
+    "每期應收與已收",
+    "2026/10 帳期",
+    "封存鏈",
+    "當期流水",
+    "收款 5 筆",
+    "臨時加帳 0 筆"
+   ],
+   "figures": [
+    "2026",
+    "$4,000",
+    "$3,000",
+    "$2,000",
+    "$1,000",
+    "$0",
+    "$2,060",
+    "$1,620",
+    "$360",
+    "$170",
+    "$220",
+    "$200",
+    "$450",
+    "$650",
+    "$300",
+    "$40",
+    "$100",
+    "$1,530",
+    "$390",
+    "$1,140",
+    "$280",
+    "$640",
+    "$800"
+   ],
+   "images": [],
+   "controls": 161,
+   "words": 178
+  },
+  "http://127.0.0.1:3112/": {
+   "links": [],
+   "fields": [],
+   "actions": [],
+   "forms": [],
+   "hooked": [],
+   "headings": [
+    "登入後查看本期帳務"
+   ],
+   "figures": [],
+   "images": [],
+   "controls": 1,
+   "words": 8
+  },
+  "http://127.0.0.1:3111/?tab=dashboard&do=expand": {
+   "links": [],
+   "fields": [
+    "unnamed select 1",
+    "#log-search",
+    "unnamed select 2",
+    "#automation-text",
+    "ingest-mode",
+    "unnamed text 1",
+    "#payment-amount",
+    "#payment-date",
+    "#payment-method",
+    "#payment-note",
+    "#charge-amount",
+    "#charge-date",
+    "#charge-description",
+    "#subscription-member",
+    "#subscription-platform",
+    "#subscription-start",
+    "#platform-mode-p_video",
+    "#platform-price-p_video",
+    "#platform-mode-p_music",
+    "#platform-price-p_music",
+    "#platform-mode-p_cloud",
+    "#platform-price-p_cloud",
+    "#platform-mode-p_design",
+    "#platform-price-p_design",
+    "#platform-mode-p_old",
+    "#platform-price-p_old",
+    "#new-platform-name",
+    "#new-platform-mode",
+    "#new-platform-price",
+    "#member-prior-m_wang",
+    "#member-fee-m_wang",
+    "#member-prior-m_chen",
+    "#member-fee-m_chen",
+    "#member-prior-m_lin",
+    "#member-fee-m_lin",
+    "#member-prior-m_chang",
+    "#member-fee-m_chang",
+    "#member-prior-m_huang",
+    "#member-fee-m_huang",
+    "#member-prior-m_ouyang",
+    "#member-fee-m_ouyang",
+    "#member-prior-m_alex",
+    "#member-fee-m_alex",
+    "#member-prior-m_wu",
+    "#member-fee-m_wu",
+    "#member-prior-m_chou",
+    "#member-fee-m_chou",
+    "#new-member-name",
+    "#new-member-prior",
+    "#new-member-custom",
+    "#bank-info",
+    "#reminder-style",
+    "#history-month"
+   ],
+   "actions": [],
+   "forms": [
+    {
+     "key": "form 1",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "unnamed text 1"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=text]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 2",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#payment-amount",
+      "#payment-date",
+      "#payment-method",
+      "#payment-note"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=number]",
+      "input[type=date]",
+      "select",
+      "input",
+      "button[type=button]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 3",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#charge-amount",
+      "#charge-date",
+      "#charge-description"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=number]",
+      "input[type=date]",
+      "input",
+      "button[type=button]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 4",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#subscription-member",
+      "#subscription-platform",
+      "#subscription-start"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "select",
+      "input",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 5",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#new-platform-name",
+      "#new-platform-mode",
+      "#new-platform-price"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input",
+      "select",
+      "input[type=number]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 6",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#new-member-name",
+      "#new-member-prior",
+      "#new-member-custom"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input",
+      "input[type=number]",
+      "button[type=submit]"
+     ]
+    }
+   ],
+   "hooked": [],
+   "headings": [
+    "總覽",
+    "本期收款",
+    "帳務檢查",
+    "最近操作",
+    "本期流水帳",
+    "收款 顯示 5 / 5 筆",
+    "臨時加帳 顯示 2 / 2 筆",
+    "本期分攤",
+    "文字入帳",
+    "ai 帳務助理",
+    "登記收款：",
+    "登記臨時加帳：",
+    "新增名額",
+    "全部名額",
+    "平台與定價",
+    "新增平台",
+    "成員與期初餘額",
+    "新增成員",
+    "催繳訊息與匯款資訊",
+    "備份與還原",
+    "帳期",
+    "確認還原備份",
+    "每期應收與已收",
+    "2026/10 帳期",
+    "封存鏈",
+    "當期流水",
+    "收款 5 筆",
+    "臨時加帳 0 筆"
+   ],
+   "figures": [
+    "2026",
+    "$1,910",
+    "$790",
+    "$750",
+    "29%",
+    "$2,700",
+    "$920",
+    "$640",
+    "$280",
+    "$0",
+    "$460",
+    "$150",
+    "$300",
+    "$100",
+    "09:05",
+    "$1,000",
+    "$220",
+    "$170",
+    "$80",
+    "$250",
+    "$110",
+    "$60",
+    "$330",
+    "90%"
+   ],
+   "images": [],
+   "controls": 166,
+   "words": 304
+  },
+  "http://127.0.0.1:3111/?tab=dashboard&do=pay": {
+   "links": [],
+   "fields": [
+    "#log-search",
+    "unnamed select 1",
+    "#automation-text",
+    "ingest-mode",
+    "unnamed text 1",
+    "#payment-amount",
+    "#payment-date",
+    "#payment-method",
+    "#payment-note",
+    "#charge-amount",
+    "#charge-date",
+    "#charge-description",
+    "#subscription-member",
+    "#subscription-platform",
+    "#subscription-start",
+    "#platform-mode-p_video",
+    "#platform-price-p_video",
+    "#platform-mode-p_music",
+    "#platform-price-p_music",
+    "#platform-mode-p_cloud",
+    "#platform-price-p_cloud",
+    "#platform-mode-p_design",
+    "#platform-price-p_design",
+    "#platform-mode-p_old",
+    "#platform-price-p_old",
+    "#new-platform-name",
+    "#new-platform-mode",
+    "#new-platform-price",
+    "#member-prior-m_wang",
+    "#member-fee-m_wang",
+    "#member-prior-m_chen",
+    "#member-fee-m_chen",
+    "#member-prior-m_lin",
+    "#member-fee-m_lin",
+    "#member-prior-m_chang",
+    "#member-fee-m_chang",
+    "#member-prior-m_huang",
+    "#member-fee-m_huang",
+    "#member-prior-m_ouyang",
+    "#member-fee-m_ouyang",
+    "#member-prior-m_alex",
+    "#member-fee-m_alex",
+    "#member-prior-m_wu",
+    "#member-fee-m_wu",
+    "#member-prior-m_chou",
+    "#member-fee-m_chou",
+    "#new-member-name",
+    "#new-member-prior",
+    "#new-member-custom",
+    "#bank-info",
+    "#reminder-style",
+    "#history-month"
+   ],
+   "actions": [],
+   "forms": [
+    {
+     "key": "form 1",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "unnamed text 1"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=text]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 2",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#payment-amount",
+      "#payment-date",
+      "#payment-method",
+      "#payment-note"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=number]",
+      "input[type=date]",
+      "select",
+      "input",
+      "button[type=button]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 3",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#charge-amount",
+      "#charge-date",
+      "#charge-description"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=number]",
+      "input[type=date]",
+      "input",
+      "button[type=button]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 4",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#subscription-member",
+      "#subscription-platform",
+      "#subscription-start"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "select",
+      "input",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 5",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#new-platform-name",
+      "#new-platform-mode",
+      "#new-platform-price"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input",
+      "select",
+      "input[type=number]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 6",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#new-member-name",
+      "#new-member-prior",
+      "#new-member-custom"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input",
+      "input[type=number]",
+      "button[type=submit]"
+     ]
+    }
+   ],
+   "hooked": [],
+   "headings": [
+    "總覽",
+    "本期收款",
+    "帳務檢查",
+    "最近操作",
+    "本期流水帳",
+    "收款 顯示 5 / 5 筆",
+    "臨時加帳 顯示 2 / 2 筆",
+    "本期分攤",
+    "文字入帳",
+    "ai 帳務助理",
+    "登記收款：alexandria montgomery-li",
+    "登記臨時加帳：alexandria montgomery-li",
+    "新增名額",
+    "全部名額",
+    "平台與定價",
+    "新增平台",
+    "成員與期初餘額",
+    "新增成員",
+    "催繳訊息與匯款資訊",
+    "備份與還原",
+    "帳期",
+    "確認還原備份",
+    "每期應收與已收",
+    "2026/10 帳期",
+    "封存鏈",
+    "當期流水",
+    "收款 5 筆",
+    "臨時加帳 0 筆"
+   ],
+   "figures": [
+    "2026",
+    "$1,910",
+    "$790",
+    "$750",
+    "29%",
+    "$2,700",
+    "$920",
+    "$460",
+    "$280",
+    "$150",
+    "$300",
+    "$100",
+    "09:05",
+    "$1,000",
+    "$220",
+    "$170",
+    "$80",
+    "$250",
+    "$110",
+    "$60",
+    "$330",
+    "90%"
+   ],
+   "images": [],
+   "controls": 161,
+   "words": 302
+  },
+  "http://127.0.0.1:3111/?tab=config&do=backup": {
+   "links": [
+    "/api/export-json"
+   ],
+   "fields": [
+    "#log-search",
+    "unnamed select 1",
+    "#automation-text",
+    "ingest-mode",
+    "unnamed text 1",
+    "#payment-amount",
+    "#payment-date",
+    "#payment-method",
+    "#payment-note",
+    "#charge-amount",
+    "#charge-date",
+    "#charge-description",
+    "#subscription-member",
+    "#subscription-platform",
+    "#subscription-start",
+    "#platform-mode-p_video",
+    "#platform-price-p_video",
+    "#platform-mode-p_music",
+    "#platform-price-p_music",
+    "#platform-mode-p_cloud",
+    "#platform-price-p_cloud",
+    "#platform-mode-p_design",
+    "#platform-price-p_design",
+    "#platform-mode-p_old",
+    "#platform-price-p_old",
+    "#new-platform-name",
+    "#new-platform-mode",
+    "#new-platform-price",
+    "#member-prior-m_wang",
+    "#member-fee-m_wang",
+    "#member-prior-m_chen",
+    "#member-fee-m_chen",
+    "#member-prior-m_lin",
+    "#member-fee-m_lin",
+    "#member-prior-m_chang",
+    "#member-fee-m_chang",
+    "#member-prior-m_huang",
+    "#member-fee-m_huang",
+    "#member-prior-m_ouyang",
+    "#member-fee-m_ouyang",
+    "#member-prior-m_alex",
+    "#member-fee-m_alex",
+    "#member-prior-m_wu",
+    "#member-fee-m_wu",
+    "#member-prior-m_chou",
+    "#member-fee-m_chou",
+    "#new-member-name",
+    "#new-member-prior",
+    "#new-member-custom",
+    "#bank-info",
+    "#reminder-style",
+    "#history-month"
+   ],
+   "actions": [],
+   "forms": [
+    {
+     "key": "form 1",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "unnamed text 1"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=text]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 2",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#payment-amount",
+      "#payment-date",
+      "#payment-method",
+      "#payment-note"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=number]",
+      "input[type=date]",
+      "select",
+      "input",
+      "button[type=button]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 3",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#charge-amount",
+      "#charge-date",
+      "#charge-description"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input[type=number]",
+      "input[type=date]",
+      "input",
+      "button[type=button]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 4",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#subscription-member",
+      "#subscription-platform",
+      "#subscription-start"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "select",
+      "input",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 5",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#new-platform-name",
+      "#new-platform-mode",
+      "#new-platform-price"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input",
+      "select",
+      "input[type=number]",
+      "button[type=submit]"
+     ]
+    },
+    {
+     "key": "form 6",
+     "attrs": [
+      "method=get"
+     ],
+     "fields": [
+      "#new-member-name",
+      "#new-member-prior",
+      "#new-member-custom"
+     ],
+     "hidden": [],
+     "submits": 1,
+     "controls": [
+      "input",
+      "input[type=number]",
+      "button[type=submit]"
+     ]
+    }
+   ],
+   "hooked": [],
+   "headings": [
+    "設定",
+    "本期收款",
+    "帳務檢查",
+    "最近操作",
+    "本期流水帳",
+    "收款 顯示 5 / 5 筆",
+    "臨時加帳 顯示 2 / 2 筆",
+    "本期分攤",
+    "文字入帳",
+    "ai 帳務助理",
+    "登記收款：",
+    "登記臨時加帳：",
+    "新增名額",
+    "全部名額",
+    "平台與定價",
+    "新增平台",
+    "成員與期初餘額",
+    "新增成員",
+    "催繳訊息與匯款資訊",
+    "備份與還原",
+    "帳期",
+    "確認還原備份",
+    "每期應收與已收",
+    "2026/10 帳期",
+    "封存鏈",
+    "當期流水",
+    "收款 5 筆",
+    "臨時加帳 0 筆"
+   ],
+   "figures": [
+    "2026",
+    "$1,910",
+    "09:05",
+    "$1,990",
+    "$1,890",
+    "$790",
+    "$1,790",
+    "$1,810",
+    "$1,560",
+    "$1,660",
+    "$1,760",
+    "$690",
+    "$2,060",
+    "$390",
+    "$2,280",
+    "$170",
+    "$2,450",
+    "$0",
+    "$780",
+    "$1,620",
+    "10:00",
+    "$1,060",
+    "$1,340",
+    "$1,360",
+    "$1,040",
+    "$2,010",
+    "$2,230",
+    "$2,400",
+    "$730",
+    "$1,540",
+    "$1,010",
+    "$1,260",
+    "$1,210",
+    "$1,310",
+    "$960",
+    "$510",
+    "$2,100",
+    "$2,270",
+    "$600",
+    "$1,440",
+    "$480",
+    "$540",
+    "$1,380",
+    "$640",
+    "$1,280",
+    "$1,130",
+    "$1,530",
+    "$1,750",
+    "$1,920",
+    "$470",
+    "$3,630",
+    "$530",
+    "$3,570",
+    "$810",
+    "$3,290",
+    "$1,000",
+    "$1,100",
+    "$1,400"
+   ],
+   "images": [],
+   "controls": 242,
+   "words": 903
+  }
+ }
+}

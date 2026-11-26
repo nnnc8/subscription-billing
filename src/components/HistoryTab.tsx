@@ -1,7 +1,7 @@
 import { useState } from 'react';
+import type { CSSProperties } from 'react';
 import { Download } from 'lucide-react';
 import { exportBillingCsv, formatMoney, isVoidedTransaction } from '../billing.js';
-import { initialOf, memberToneStyle } from '../display.js';
 import type { Database } from '../types/billing.js';
 
 interface HistoryTabProps {
@@ -24,7 +24,7 @@ export function HistoryTab({ data }: HistoryTabProps) {
   const integrity = data._audit?.snapshot.history.integrity;
 
   if (!selected) {
-    return <p className="card empty" role="status">目前尚無已封存帳期。第一個月結束後，帳期會自動封存到這裡。</p>;
+    return <p className="empty-state" role="status">目前尚無已封存帳期。第一個月結束後，帳期會自動封存到這裡。</p>;
   }
 
   const totals = selected.balances.reduce((summary, balance) => ({
@@ -43,45 +43,51 @@ export function HistoryTab({ data }: HistoryTabProps) {
   const ticks = [4, 3, 2, 1, 0].map((step) => (top / 4) * step);
   const height = (value: number) => `${(value / top) * 100}%`;
   const activePayments = selected.payments.filter((payment) => !isVoidedTransaction(payment)).length;
+  // The plot keeps a minimum width per month, so a long history scrolls sideways instead of squeezing.
+  const trackStyle = { '--cols': historySeries.length } as CSSProperties;
 
   return (
-    <div className="report-grid">
-      <article className="card wide">
-        <header className="card-head">
-          <div><h2>每期應收與已收</h2><p className="meta">點一期查看明細。應收含訂閱費與臨時加帳。</p></div>
-          <div className="chart-legend"><span><i />應收</span><span><i className="paid" />已收</span></div>
+    <div className="report">
+      <article className="block chart-block">
+        <header className="section-head">
+          <div className="section-title"><h2>每期應收與已收</h2><p className="meta">點一期查看明細。應收含訂閱費與臨時加帳。</p></div>
+          <div className="chart-legend">
+            <span><i className="swatch swatch-fee" aria-hidden="true" />應收</span>
+            <span><i className="swatch swatch-paid" aria-hidden="true" />已收</span>
+          </div>
         </header>
-        <div className="bar-chart-html" role="group" aria-label="歷史訂閱費與收款趨勢">
+        <div className="bar-chart" role="group" aria-label="歷史訂閱費與收款趨勢">
           <div className="bar-axis" aria-hidden="true">
             {ticks.map((tick) => <span key={tick}>{formatMoney(tick)}</span>)}
           </div>
           <div className="bar-plot">
-            <span className="bar-grid-lines" aria-hidden="true">
-              {ticks.map((tick) => <span key={tick} style={{ bottom: height(tick) }} />)}
-            </span>
-            {historySeries.map((entry) => (
-              <button
-                key={entry.month}
-                type="button"
-                className="bar-group"
-                aria-pressed={entry.month === selected.month}
-                aria-label={`${entry.month}：應收 ${formatMoney(entry.fees)}，已收 ${formatMoney(entry.paid)}`}
-                onClick={() => setSelectedMonth(entry.month)}
-              >
-                <span className="bar-pair">
-                  <span className="bar bar-fee" style={{ height: height(entry.fees) }} />
-                  <span className="bar bar-paid" style={{ height: height(entry.paid) }} />
-                </span>
-                <span className="bar-label">{entry.month}</span>
-              </button>
-            ))}
+            <div className="bar-track" style={trackStyle}>
+              {historySeries.map((entry) => (
+                <div key={entry.month} className="bar-col">
+                  <span className="bar-pair" aria-hidden="true">
+                    <span className={`bar bar-fee${entry.fees > 0 ? '' : ' bar-none'}`} style={{ height: height(entry.fees) }} />
+                    <span className={`bar bar-paid${entry.paid > 0 ? '' : ' bar-none'}`} style={{ height: height(entry.paid) }} />
+                  </span>
+                  <button
+                    type="button"
+                    className="bar-month"
+                    aria-pressed={entry.month === selected.month}
+                    aria-label={`${entry.month}：應收 ${formatMoney(entry.fees)}，已收 ${formatMoney(entry.paid)}`}
+                    onClick={() => setSelectedMonth(entry.month)}
+                  >
+                    <span className="bar-month-full">{entry.month}</span>
+                    <span className="bar-month-short">{entry.month.slice(5)}</span>
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </article>
 
-      <article className="card main">
-        <header className="card-head">
-          <div>
+      <article className="card report-main">
+        <header className="section-head">
+          <div className="section-title">
             <h2>{selected.month} 帳期</h2>
             <p className="meta">唯讀，封存後不能回頭修改。</p>
           </div>
@@ -102,52 +108,51 @@ export function HistoryTab({ data }: HistoryTabProps) {
           </div>
         </header>
 
-        <dl className="month-totals" aria-label="歷史帳期摘要">
+        <dl className="figures" aria-label="歷史帳期摘要">
+          <div className="figure-lead"><dt>期末餘額</dt><dd>{formatMoney(totals.endingBalance)}</dd></div>
           <div><dt>訂閱費</dt><dd>{formatMoney(totals.subscriptionFee)}</dd></div>
           <div><dt>臨時加帳</dt><dd>{formatMoney(totals.tempCharge)}</dd></div>
           <div><dt>已收款</dt><dd className="positive">+{formatMoney(totals.paid)}</dd></div>
-          <div><dt>期末餘額</dt><dd>{formatMoney(totals.endingBalance)}</dd></div>
         </dl>
 
         <div className="table-wrap">
-          <table>
-            <thead>
-              <tr><th>成員</th><th className="n col-optional">期初</th><th className="n">訂閱費</th><th className="n col-optional">加帳</th><th className="n">已付</th><th className="n">期末</th></tr>
+          {/* The rows restack as labelled blocks on a narrow sheet, so the table roles are spelled out. */}
+          <table className="stack-table" role="table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th role="columnheader">成員</th><th role="columnheader" className="n">期初</th><th role="columnheader" className="n">訂閱費</th>
+                <th role="columnheader" className="n">加帳</th><th role="columnheader" className="n">已付</th><th role="columnheader" className="n">期末</th>
+              </tr>
             </thead>
-            <tbody>
+            <tbody role="rowgroup">
               {selected.balances.map((balance) => (
-                <tr key={balance.memberId ?? `${selected.month}-${balance.memberName}`}>
-                  <td>
-                    <span className="cell-person">
-                      <span className="avatar avatar-sm" style={memberToneStyle(data.members, { ...(balance.memberId ? { id: balance.memberId } : {}), name: balance.memberName })} aria-hidden="true">{initialOf(balance.memberName)}</span>
-                      {balance.memberName}
-                    </span>
-                  </td>
-                  <td className="n col-optional">{formatMoney(balance.priorBalance)}</td>
-                  <td className="n">{formatMoney(balance.subscriptionFee)}</td>
-                  <td className="n col-optional">{formatMoney(balance.tempCharge)}</td>
-                  <td className="n">{formatMoney(balance.paid)}</td>
-                  <td className="n strong">{formatMoney(balance.endingBalance)}</td>
+                <tr key={balance.memberId ?? `${selected.month}-${balance.memberName}`} role="row">
+                  <td role="cell" className="cell-lead">{balance.memberName}</td>
+                  <td role="cell" className="n" data-label="期初">{formatMoney(balance.priorBalance)}</td>
+                  <td role="cell" className="n" data-label="訂閱費">{formatMoney(balance.subscriptionFee)}</td>
+                  <td role="cell" className="n" data-label="加帳">{formatMoney(balance.tempCharge)}</td>
+                  <td role="cell" className="n" data-label="已付">{formatMoney(balance.paid)}</td>
+                  <td role="cell" className="n strong" data-label="期末">{formatMoney(balance.endingBalance)}</td>
                 </tr>
               ))}
             </tbody>
-            <tfoot>
-              <tr>
-                <td>合計</td>
-                <td className="n col-optional">{formatMoney(totals.priorBalance)}</td>
-                <td className="n">{formatMoney(totals.subscriptionFee)}</td>
-                <td className="n col-optional">{formatMoney(totals.tempCharge)}</td>
-                <td className="n">{formatMoney(totals.paid)}</td>
-                <td className="n">{formatMoney(totals.endingBalance)}</td>
+            <tfoot role="rowgroup">
+              <tr role="row">
+                <td role="cell" className="cell-lead">合計</td>
+                <td role="cell" className="n" data-label="期初">{formatMoney(totals.priorBalance)}</td>
+                <td role="cell" className="n" data-label="訂閱費">{formatMoney(totals.subscriptionFee)}</td>
+                <td role="cell" className="n" data-label="加帳">{formatMoney(totals.tempCharge)}</td>
+                <td role="cell" className="n" data-label="已付">{formatMoney(totals.paid)}</td>
+                <td role="cell" className="n" data-label="期末">{formatMoney(totals.endingBalance)}</td>
               </tr>
             </tfoot>
           </table>
         </div>
       </article>
 
-      <div className="side stack">
-        <article className="card" aria-label="歷史封存完整性">
-          <header className="card-head">
+      <div className="report-side">
+        <article className="block" aria-label="歷史封存完整性">
+          <header className="section-head">
             <h2>封存鏈</h2>
             {integrity
               ? <span className={`pill ${integrity.ok ? 'pos' : 'neg'}`}>{integrity.ok ? '歷史帳完整' : '歷史帳異常'}</span>
@@ -155,7 +160,7 @@ export function HistoryTab({ data }: HistoryTabProps) {
           </header>
           {integrity ? (
             <>
-              <dl className="seal-facts">
+              <dl className="kv ruled">
                 <div><dt>已封存</dt><dd>{integrity.sealedCount} / {integrity.count} 期</dd></div>
                 <div><dt>最新月份</dt><dd>{integrity.latestMonth ?? '—'}</dd></div>
                 <div><dt>最新指紋</dt><dd><code>{integrity.latestHash?.slice(0, 12) ?? '尚未產生'}</code></dd></div>
@@ -170,48 +175,52 @@ export function HistoryTab({ data }: HistoryTabProps) {
           ) : <p className="notice bad" role="alert">完整性資料目前無法取得，請重新整理或檢查伺服器。</p>}
         </article>
 
-        <article className="card">
-          <header className="card-head">
+        <article className="block">
+          <header className="section-head">
             <h2>當期流水</h2>
             <span className="meta">收款 {activePayments} 筆有效</span>
           </header>
-          <div className="log-group">
-            <h3>收款 <span>{selected.payments.length} 筆</span></h3>
-            {selected.payments.length === 0 ? <p className="empty">此期沒有收款紀錄。</p> : (
-              <ul className="log-list">
-                {[...selected.payments].reverse().map((payment) => {
-                  const voided = isVoidedTransaction(payment);
-                  return (
-                    <li key={payment.id} className={voided ? 'voided' : undefined}>
-                      <div className="log-text">
-                        <strong>{payment.memberName}{voided && <span className="pill">已作廢</span>}</strong>
-                        <span>{payment.date} · {payment.method}{payment.note ? ` · ${payment.note}` : ''}</span>
-                      </div>
-                      <span className={`log-amount${voided ? '' : ' positive'}`}>+{formatMoney(payment.amount)}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-          <div className="log-group card-split">
-            <h3>臨時加帳 <span>{selected.tempCharges.length} 筆</span></h3>
-            {selected.tempCharges.length === 0 ? <p className="empty">此期沒有臨時加帳。</p> : (
-              <ul className="log-list">
-                {selected.tempCharges.map((charge) => {
-                  const voided = isVoidedTransaction(charge);
-                  return (
-                    <li key={charge.id} className={voided ? 'voided' : undefined}>
-                      <div className="log-text">
-                        <strong>{charge.memberName}{voided && <span className="pill">已作廢</span>}</strong>
-                        <span>{charge.date ?? '—'}{charge.desc ? ` · ${charge.desc}` : ''}</span>
-                      </div>
-                      <span className="log-amount">{formatMoney(charge.amount)}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+          <div className="ledger-columns">
+            <div className="log-group">
+              <div className="group-head"><h3>收款</h3><span className="meta">{selected.payments.length} 筆</span></div>
+              {selected.payments.length === 0 ? <p className="empty">此期沒有收款紀錄。</p> : (
+                <ul className="log-list read-only ruled">
+                  {[...selected.payments].reverse().map((payment) => {
+                    const voided = isVoidedTransaction(payment);
+                    return (
+                      <li key={payment.id} className={voided ? 'voided' : undefined}>
+                        <span className="log-date">{payment.date}</span>
+                        <div className="log-text">
+                          <span className="row-title"><strong>{payment.memberName}</strong>{voided && <span className="pill">已作廢</span>}</span>
+                          <span className="row-sub">{payment.method}{payment.note ? `，${payment.note}` : ''}</span>
+                        </div>
+                        <span className={`log-amount${voided ? '' : ' positive'}`}>+{formatMoney(payment.amount)}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+            <div className="log-group">
+              <div className="group-head"><h3>臨時加帳</h3><span className="meta">{selected.tempCharges.length} 筆</span></div>
+              {selected.tempCharges.length === 0 ? <p className="empty">此期沒有臨時加帳。</p> : (
+                <ul className="log-list read-only ruled">
+                  {selected.tempCharges.map((charge) => {
+                    const voided = isVoidedTransaction(charge);
+                    return (
+                      <li key={charge.id} className={voided ? 'voided' : undefined}>
+                        <span className="log-date">{charge.date ?? '—'}</span>
+                        <div className="log-text">
+                          <span className="row-title"><strong>{charge.memberName}</strong>{voided && <span className="pill">已作廢</span>}</span>
+                          {charge.desc && <span className="row-sub">{charge.desc}</span>}
+                        </div>
+                        <span className="log-amount">{formatMoney(charge.amount)}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </div>
         </article>
       </div>

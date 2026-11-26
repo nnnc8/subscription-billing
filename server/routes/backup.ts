@@ -24,7 +24,6 @@ export function createBackupRouter(runtime: Runtime): Router {
         const data = await runtime.enqueueExclusive(() => runtime.restoreSQLiteFromBackup(filename, {
             type: 'backup.restored', summary: `還原備份 ${filename}`, entityType: 'backup', entityId: filename, payload: { filename }
         }));
-        runtime.invalidateRAGIndex();
         sendDatabase(res, data, { message: `已還原至 ${filename}` });
     });
     router.post('/api/backups/create', async (req, res) => {

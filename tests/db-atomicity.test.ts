@@ -8,7 +8,6 @@ import { getCanonicalPersistedFingerprint, loadFromConnection, loadFromSQLite, o
 import { rowChanges, DELETE_CHUNK_SIZE } from '../lib/repositories/shared.js';
 import { createRuntime } from './test-database.js';
 import type { Runtime } from './test-database.js';
-import type { AutomationProposal } from '../src/types/billing.js';
 
 const directories: string[] = [];
 const runtimes: Runtime[] = [];
@@ -26,9 +25,6 @@ async function makeRuntime() {
 }
 async function state(runtime: Runtime) {
     return { fingerprint: getCanonicalPersistedFingerprint((await runtime.readDB())!), backups: (await runtime.client.execute('SELECT * FROM backups ORDER BY id')).rows };
-}
-function pendingProposal(): AutomationProposal {
-    return { id: 'atomic-proposal', kind: 'payment', sourceText: 'test', confidence: 1, reason: 'test', warnings: [], payload: { memberId: 'm_alpha', amount: 7 }, status: 'pending', createdAt: new Date().toISOString() };
 }
 
 describe('libSQL persistence', () => {
@@ -95,29 +91,18 @@ describe('libSQL persistence', () => {
         ]);
         expect((await second.readDB())?.bankInfo).toMatch(/AB$|BA$/);
     });
-    it('rolls back the losing proposal confirmation including its business rows and backup', async () => {
+    it('rolls back a write whose afterSave step fails, including its business rows and backup, and keeps the HTTP status', async () => {
         const runtime = await makeRuntime();
-        const second = createRuntime({ rootDir: path.resolve('.'), dataDir: runtime.paths.dataDir, env: { NODE_ENV: 'test' } });
-        runtimes.push(second);
-        await second.ensureReady();
-        await runtime.storeProposals([pendingProposal()]);
-        const firstCopy = (await runtime.getProposal('atomic-proposal'))!;
-        const secondCopy = (await second.getProposal('atomic-proposal'))!;
-        const confirm = (instance: Runtime, proposal: AutomationProposal, value: string) => instance.mutateDB(db => { db.bankInfo += value; }, {
-            reason: 'test.confirm', afterSave: tx => instance.transitionProposal(tx, { ...proposal, status: 'applied' })
+        const before = await state(runtime);
+        await expect(runtime.mutateDB(db => { db.bankInfo += 'must rollback'; }, {
+            reason: 'test.conflict', afterSave: async () => { throw Object.assign(new Error('Already handled'), { status: 409 }); }
+        })).rejects.toMatchObject({ status: 409, message: 'Already handled' });
+        expect(await state(runtime)).toEqual(before);
+        await runtime.mutateDB(db => { db.bankInfo += 'KEPT'; }, {
+            reason: 'test.kept', afterSave: async tx => { await tx.execute('SELECT 1'); }
         });
-        const beforeBackups = (await runtime.client.execute('SELECT id FROM backups')).rows.length;
-        const results = await Promise.allSettled([confirm(runtime, firstCopy, 'WIN_A'), confirm(second, secondCopy, 'WIN_B')]);
-        expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
-        const rejected = results.find(result => result.status === 'rejected');
-        expect(rejected?.status === 'rejected' && rejected.reason).toMatchObject({ status: 409 });
-        const bankInfo = (await runtime.readDB())!.bankInfo;
-        expect(Number(bankInfo.includes('WIN_A')) + Number(bankInfo.includes('WIN_B'))).toBe(1);
-        expect((await runtime.client.execute('SELECT id FROM backups')).rows).toHaveLength(beforeBackups + 1);
-        expect((await second.getProposal(firstCopy.id))?.status).toBe('applied');
-        const after = await state(runtime);
-        await expect(confirm(second, secondCopy, 'must rollback')).rejects.toMatchObject({ status: 409 });
-        expect(await state(runtime)).toEqual(after);
+        expect((await runtime.readDB())?.bankInfo).toMatch(/KEPT$/);
+        expect((await runtime.client.execute('SELECT id FROM backups')).rows).toHaveLength(before.backups.length + 1);
     });
     it.skipIf(Boolean(process.env.TEST_LIBSQL_URL))('wraps COMMIT failures and discards all uncommitted changes', async () => {
         const runtime = await makeRuntime();
@@ -178,22 +163,19 @@ describe.skipIf(!process.env.TEST_LIBSQL_URL)('independent remote clients', () =
 });
 
 describe('transactional backups', () => {
-    it('restores business state and records safety while keeping auth cutoff and proposals', async () => {
+    it('restores business state and records safety while keeping auth cutoff', async () => {
         const runtime = await makeRuntime();
         const original = (await runtime.readDB())!;
         const id = await runtime.backupDB();
         await runtime.mutateDB(db => { db.bankInfo = 'after snapshot'; });
-        await runtime.storeProposals([pendingProposal()]);
         await runtime.revokeAllSessions(12345);
-        const proposals = await runtime.listProposals();
         const restored = await runtime.restoreSQLiteFromBackup(id, { type: 'backup.restored', summary: 'test restore', entityType: 'backup' });
         expect(restored.bankInfo).toBe(original.bankInfo);
         expect(restored.ledger.entries.at(-1)?.type).toBe('backup.restored');
         expect(await runtime.sessionsRevokedBefore()).toBe(12345);
-        expect(await runtime.listProposals()).toEqual(proposals);
         expect((await runtime.client.execute("SELECT reason FROM backups WHERE reason='restore.safety'")).rows).toHaveLength(1);
     });
-    it('reads the latest cutoff and proposals across runtime restarts without a cache', async () => {
+    it('reads the latest cutoff across runtime restarts without a cache', async () => {
         const runtime = await makeRuntime();
         const second = createRuntime({ rootDir: path.resolve('.'), dataDir: runtime.paths.dataDir, env: { NODE_ENV: 'test' } });
         runtimes.push(second);
@@ -203,9 +185,7 @@ describe('transactional backups', () => {
         expect(await second.sessionsRevokedBefore()).toBe(555);
         await runtime.revokeAllSessions(111);
         expect(await second.sessionsRevokedBefore()).toBe(555);
-        await runtime.storeProposals([pendingProposal()]);
         runtime.close();
-        expect((await second.getProposal('atomic-proposal'))?.status).toBe('pending');
         expect(await second.sessionsRevokedBefore()).toBe(555);
     });
     it('keeps business data and all backups after restore or delete fails', async () => {

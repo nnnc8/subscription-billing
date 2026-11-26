@@ -1,17 +1,5 @@
-import type { CSSProperties } from 'react';
 import { isSubscriptionBillable } from './billing.js';
-import type { Database, Member, Subscription } from './types/billing.js';
-
-// Each member keeps one hue on every screen. Stepping by the golden angle keeps neighbours in a
-// list at least 60 degrees apart, so two people never read as the same colour family.
-export function memberHue(members: ReadonlyArray<Pick<Member, 'id' | 'name'>>, member: { id?: string; name?: string }): number {
-  const index = members.findIndex((item) => (member.id && item.id === member.id) || item.name === member.name);
-  return Math.round((20 + Math.max(index, 0) * 137.508) % 360);
-}
-
-export function memberToneStyle(members: ReadonlyArray<Pick<Member, 'id' | 'name'>>, member: { id?: string; name?: string }): CSSProperties {
-  return { '--hue': memberHue(members, member) } as CSSProperties;
-}
+import type { Database, Subscription } from './types/billing.js';
 
 export function initialOf(name: string): string {
   return Array.from(name.trim())[0] ?? '?';

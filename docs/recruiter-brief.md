@@ -12,7 +12,6 @@ The project is intentionally narrow: it is not positioned as a public SaaS produ
 - Google OAuth login with allowlisted accounts and signed HttpOnly session cookies.
 - Data model for members, platforms, subscriptions, payments, temporary charges, monthly history, and ledger events.
 - Accounting checks for duplicate payments, temporary charges, archived entities, close readiness, and monthly rollover.
-- GenAI capabilities: AI billing reminders with multiple tones, and an interactive AI accounting assistant utilizing function calling and RAG (via Google Gemini).
 - Automated unit test suite with Vitest (`pnpm test`), alongside compliance/integration verification via `pnpm run verify`.
 
 ## Why It Matters
@@ -24,7 +23,6 @@ The original workflow was spreadsheet-like: member records, platform costs, paym
 - `README.md` for setup, privacy boundary, and verification.
 - `server.ts` for API routes, auth protection, backups, and monthly close flow.
 - `lib/accounting.ts` for accounting checks and ledger logic.
-- `lib/ai.ts`, `lib/ai-assistant.ts`, `lib/ai-reminder.ts`, `lib/rag.ts` for GenAI architecture, vector search, and function calling (integrated with Google Gemini).
 - `tests/` directory for TypeScript unit tests using Vitest.
 - `verify_accounting.cjs` and `verify_rollover.py` for compliance and monthly rollover validation.
 

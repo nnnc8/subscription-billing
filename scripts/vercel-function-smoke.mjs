@@ -79,7 +79,7 @@ try {
         TURSO_DATABASE_URL: process.env.TEST_LIBSQL_URL, TURSO_AUTH_TOKEN: '',
         APP_SESSION_SECRET: 'fake-vercel-smoke-session-secret-01234567890123456789',
         GOOGLE_CLIENT_ID: 'fake-client', GOOGLE_CLIENT_SECRET: 'fake-client-secret',
-        GOOGLE_ALLOWED_EMAILS: 'smoke@example.com', GOOGLE_GEMINI_API_KEY: '',
+        GOOGLE_ALLOWED_EMAILS: 'smoke@example.com',
         GOOGLE_OAUTH_AUTH_URL: `${googleUrl}/auth`, GOOGLE_OAUTH_TOKEN_URL: `${googleUrl}/token`, GOOGLE_OAUTH_USERINFO_URL: `${googleUrl}/userinfo`,
         GOOGLE_REDIRECT_URI: 'https://billing.example/api/auth/callback'
     });

@@ -20,16 +20,18 @@ export interface SignInProblemPage {
 }
 
 // The page has no script and no external resource, so it works under the site's
-// Content-Security-Policy (inline styles are allowed there).
+// Content-Security-Policy (inline styles are allowed there). The colours are the app's light
+// theme (src/tokens.css) written out as sRGB, because this page cannot load that stylesheet.
 const PAGE_STYLE = [
-    'body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f6f5f1;color:#1f2933;',
+    'body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f1ea;color:#14110f;',
     'font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;line-height:1.6}',
-    'main{max-width:26rem;margin:1.5rem;padding:2rem;background:#fff;border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}',
-    'h1{margin:0 0 .75rem;font-size:1.25rem}',
+    'main{max-width:26rem;margin:1.5rem;padding:2rem;background:#fffdfa;border:1px solid #dbd7ce;border-radius:10px}',
+    'h1{margin:0 0 .75rem;font-size:1.25rem;font-weight:600}',
     'p{margin:.5rem 0}',
-    '.account{font-weight:600;word-break:break-all}',
-    '.primary{display:inline-block;margin-top:1.25rem;padding:.65rem 1.1rem;border-radius:10px;background:#1f2933;color:#fff;text-decoration:none}',
-    '.secondary{display:inline-block;margin:1.25rem 0 0 .75rem;color:#52606d}'
+    '.account{font-weight:500;word-break:break-all}',
+    '.primary{display:inline-block;margin-top:1.25rem;padding:.65rem 1.1rem;border:1px solid #c3572e;border-radius:6px;background:#fc6b33;color:#14110f;font-weight:500;text-decoration:none}',
+    '.secondary{display:inline-block;margin:1.25rem 0 0 .75rem;color:#58514c}',
+    'a:focus-visible{outline:2px solid #d84a00;outline-offset:2px}'
 ].join('');
 
 export function renderSignInProblemPage({ heading, detail, action, account }: SignInProblemPage): string {

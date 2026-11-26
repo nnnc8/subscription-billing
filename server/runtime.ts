@@ -7,11 +7,9 @@ import { findAccountingWarnings, normalizeDatabaseRelations } from '../lib/accou
 import { openDatabase, loadFromConnection, runMigrations, withWriteTransaction, writeDatabase, verifyDatabase } from '../lib/db.js';
 import { getPublicOrigin, isGoogleOAuthConfigured } from '../lib/google-oauth.js';
 import { runLifecycleCatchUp, getSystemMonth } from '../lib/lifecycle.js';
-import { invalidateRAGIndex } from '../lib/rag.js';
 import type { Database } from '../src/types/billing.js';
 import { createBackupService } from './services/backup.js';
 import { createSessionRevocationStore, importLegacySessionCutoff } from './services/session-revocation.js';
-import { createProposalStore } from './services/proposals.js';
 
 const DEFAULT_ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export type RuntimeOptions = {
@@ -137,7 +135,6 @@ export function createRuntime(options: RuntimeOptions = {}) {
     const paths = { rootDir, dataDir, dbPath, sqlitePath, backupDir, demoDbPath, distDir };
     const backup = createBackupService({ client, maxBackups: config.maxBackups });
     const sessionRevocation = createSessionRevocationStore(client);
-    const proposals = createProposalStore(client);
     let readiness: RuntimeReadiness = { status: 'starting' };
     let readyPromise: Promise<void> | undefined;
     let queue: Promise<unknown> = Promise.resolve();
@@ -177,13 +174,12 @@ export function createRuntime(options: RuntimeOptions = {}) {
                     if (options.afterSave) await options.afterSave(tx);
                     await verifyDatabase(tx, freshDb);
                 } catch (error) {
-                    // Preserve route conflicts, including a lost proposal compare-and-swap.
+                    // Preserve errors that carry an HTTP status, such as deleting a backup that is already gone.
                     if (error && typeof error === 'object' && 'status' in error) throw error;
                     throw new MutationPersistenceError(error);
                 }
                 return { data: freshDb, value };
             });
-            invalidateRAGIndex();
             return result;
         } catch (error) {
             if (callbackFailed || (error && typeof error === 'object' && 'status' in error)) throw error;
@@ -240,8 +236,8 @@ export function createRuntime(options: RuntimeOptions = {}) {
     return {
         env, config, paths, client, ensureReady, initialize: ensureReady, initializeAtomic: ensureReady,
         readDB, mutateDB, enqueueExclusive, getReadiness: () => ({ ...readiness }), runStartupLifecycle,
-        isAuthConfigured, isCloudBinding, invalidateRAGIndex, close: () => client.close(),
-        ...sessionRevocation, ...backup, ...proposals
+        isAuthConfigured, isCloudBinding, close: () => client.close(),
+        ...sessionRevocation, ...backup
     };
 }
 export type Runtime = ReturnType<typeof createRuntime>;

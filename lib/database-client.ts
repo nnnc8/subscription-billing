@@ -13,7 +13,7 @@ type FileConnection = {
 };
 const files = new Map<string, FileConnection>();
 // Bind the remote transport to the fetch present at startup, so code that later
-// replaces globalThis.fetch (tests faking Gemini or the browser API) cannot intercept it.
+// replaces globalThis.fetch (tests faking the browser API) cannot intercept it.
 const remoteFetch = globalThis.fetch.bind(globalThis);
 // The Node entry loads libsql's native binary on import, and a Vercel bundle carries
 // none, so only local file databases load it, on first use.

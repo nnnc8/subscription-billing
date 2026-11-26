@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { formatMoney, getPlatformPrice, isArchivedEntity } from '../billing.js';
-import { initialOf, memberToneStyle, SEAT_STATE_LABEL, seatState } from '../display.js';
+import { SEAT_STATE_LABEL, seatState } from '../display.js';
 import type { SeatState } from '../display.js';
 import type { ApiFetch, Database, RefreshData, ShowToast, Subscription } from '../types/billing.js';
 
@@ -118,9 +118,9 @@ export function SubscriptionsTab({ data, apiFetch, refreshData, showToast }: Sub
 
   return (
     <div className="stack">
-      <article className="card">
-        <header className="card-head">
-          <div><h2>新增名額</h2><p className="meta">把成員加進平台，從起算月份開始計費。</p></div>
+      <article className="panel">
+        <header className="section-head">
+          <div className="section-title"><h2>新增名額</h2><p className="meta">把成員加進平台，從起算月份開始計費。</p></div>
         </header>
         <form className="seat-form" onSubmit={handleAddSubscription}>
           <div className="field">
@@ -148,19 +148,20 @@ export function SubscriptionsTab({ data, apiFetch, refreshData, showToast }: Sub
       </article>
 
       <article className="card">
-        <header className="card-head">
-          <div><h2>全部名額</h2><p className="meta">{data.subscriptions.length} 筆配置 · 月費依 {data.currentMonth} 計算</p></div>
+        <header className="section-head">
+          <div className="section-title"><h2>全部名額</h2><p className="meta">{data.subscriptions.length} 筆配置，月費依 {data.currentMonth} 計算</p></div>
         </header>
         {rows.length === 0 ? <p className="empty">還沒有任何名額。先在上方把成員加進平台。</p> : (
           <div className="table-wrap">
-            <table className="seat-table">
-              <thead>
-                <tr>
-                  <th>成員</th><th>平台</th><th className="col-optional">名額</th><th className="col-optional">起算</th><th className="col-optional">退出</th>
-                  <th className="n">月費</th><th>狀態</th><th className="n">操作</th>
+            {/* The rows restack as labelled blocks on a narrow sheet, so the table roles are spelled out. */}
+            <table className="stack-table stack-early" role="table">
+              <thead role="rowgroup">
+                <tr role="row">
+                  <th role="columnheader">成員</th><th role="columnheader">平台</th><th role="columnheader">名額</th><th role="columnheader">起算</th><th role="columnheader">退出</th>
+                  <th role="columnheader" className="n">月費</th><th role="columnheader">狀態</th><th role="columnheader" className="n">操作</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody role="rowgroup">
                 {rows.map((subscription) => {
                   const state = seatState(subscription, data);
                   const platform = data.platforms.find((item) => item.name === subscription.platformName);
@@ -172,23 +173,18 @@ export function SubscriptionsTab({ data, apiFetch, refreshData, showToast }: Sub
                     ? '自訂月費'
                     : platform?.billingMode === 'split' ? `均分 ${formatMoney(platform.totalCost)}` : '固定價格';
                   return (
-                    <tr key={subscription.id}>
-                      <td>
-                        <span className="cell-person">
-                          <span className="avatar avatar-sm" style={memberToneStyle(data.members, { id: subscription.memberId, name: subscription.memberName })} aria-hidden="true">{initialOf(subscription.memberName)}</span>
-                          {subscription.memberName}
-                        </span>
-                      </td>
-                      <td>{subscription.platformName}</td>
-                      <td className="col-optional">{subscription.seatLabel || (subscription.allowDuplicate ? '額外名額' : '—')}</td>
-                      <td className="col-optional">{subscription.startMonth}</td>
-                      <td className="col-optional">{subscription.exitMonth || '—'}</td>
-                      <td className="n strong">{state === 'billing' ? formatMoney(price) : '—'}<span className="sub">{basis}</span></td>
-                      <td><span className={`pill ${SEAT_STATE_TONE[state]}`}>{SEAT_STATE_LABEL[state]}</span></td>
-                      <td className="n">
+                    <tr key={subscription.id} role="row">
+                      <td role="cell" className="cell-lead">{subscription.memberName}</td>
+                      <td role="cell" data-label="平台">{subscription.platformName}</td>
+                      <td role="cell" data-label="名額">{subscription.seatLabel || (subscription.allowDuplicate ? '額外名額' : '—')}</td>
+                      <td role="cell" className="figure" data-label="起算">{subscription.startMonth}</td>
+                      <td role="cell" className="figure" data-label="退出">{subscription.exitMonth || '—'}</td>
+                      <td role="cell" className="n strong" data-label="月費">{state === 'billing' ? formatMoney(price) : '—'}<span className="sub">{basis}</span></td>
+                      <td role="cell" data-label="狀態"><span className={`pill ${SEAT_STATE_TONE[state]}`}>{SEAT_STATE_LABEL[state]}</span></td>
+                      <td role="cell" className="n cell-wide cell-actions">
                         <span className="row-actions">
-                          <button type="button" className="btn btn-ghost" onClick={() => void handleSetExitMonth(subscription)} disabled={saving}>設定退出月</button>
-                          <button type="button" className="btn btn-ghost btn-danger" onClick={() => void handleRemoveSubscription(subscription.id)} disabled={saving}>移除</button>
+                          <button type="button" className="btn btn-sm btn-ghost" onClick={() => void handleSetExitMonth(subscription)} disabled={saving}>設定退出月</button>
+                          <button type="button" className="btn btn-sm btn-ghost btn-danger" onClick={() => void handleRemoveSubscription(subscription.id)} disabled={saving}>移除</button>
                         </span>
                       </td>
                     </tr>

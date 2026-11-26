@@ -239,17 +239,4 @@ describe('public deployment hardening', () => {
             expect((await login('198.51.100.9')).status).toBe(302);
         });
     });
-    it('rate limits AI endpoints per signed-in account', async () => {
-        const runtime = (await createTestRuntime());
-        const cookie = sessionCookie();
-        await withApp(runtime, async (baseUrl) => {
-            // An empty query fails validation, so no Gemini request is made, but it still counts.
-            for (let attempt = 0; attempt < 30; attempt += 1) {
-                expect((await postJson(`${baseUrl}/api/ai/rag-search`, cookie, { query: '' })).status).toBe(400);
-            }
-            const limited = await postJson(`${baseUrl}/api/ai/rag-search`, cookie, { query: '' });
-            expect(limited.status).toBe(429);
-            expect((await fetch(`${baseUrl}/api/data`, { headers: { Cookie: cookie } })).status).toBe(200);
-        });
-    });
 });
